@@ -1,0 +1,13 @@
+# Pinned after live testing in this session.
+# mcp[cli] unpinned resolves to 2.0.0, which renamed FastMCP -> MCPServer and
+# moved it from mcp.server.fastmcp to mcp.server.mcpserver, breaking
+# mcp/server.py's `from mcp.server.fastmcp import FastMCP` import.
+# Pin to the last 1.x release rather than patching server.py against an API
+# it was never written for.
+mcp[cli]==1.29.0
+fastapi
+uvicorn
+piper-tts
+faster-whisper
+numpy
+tiktoken

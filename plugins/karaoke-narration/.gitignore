@@ -1,0 +1,11 @@
+# Runtime download cache - ~63MB of Piper voice models. Never ship these.
+# A release zip once went out at 65MB instead of 1.8MB because this was absent.
+voices/
+# Per-session working state, not package content.
+state/
+test/
+# finish_turn.sh stages here when neither KARAOKE_OUT_DIR nor the claude.ai
+# sandbox path is present - which is the normal case in a local checkout.
+out/
+__pycache__/
+*.pyc
