@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "karaoke-narration": {
+      "command": "python3",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/openai_server.py"
+      ],
+      "env": {
+        "KARAOKE_PLUGIN_ROOT": "${PLUGIN_ROOT}",
+        "KARAOKE_PLUGIN_DATA": "${PLUGIN_DATA}"
+      }
+    }
+  }
+}
