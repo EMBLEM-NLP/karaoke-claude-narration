@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "emblem-nlp",
+  "description": "Claude Code plugins published by EMBLEM-NLP.",
+  "owner": {
+    "name": "EMBLEM-NLP",
+    "url": "https://github.com/EMBLEM-NLP"
+  },
+  "plugins": [
+    {
+      "name": "karaoke-narration",
+      "source": "./plugins/karaoke-narration",
+      "description": "Word-highlighted, tap-to-seek review player for narration scripts, built to close the artifact-visibility gap when triaging agent-generated content.",
+      "version": "2.4.1",
+      "author": {
+        "name": "EMBLEM-NLP",
+        "url": "https://github.com/EMBLEM-NLP"
+      },
+      "homepage": "https://github.com/EMBLEM-NLP/karaoke-claude-narration",
+      "repository": "https://github.com/EMBLEM-NLP/karaoke-claude-narration",
+      "keywords": [
+        "tts",
+        "karaoke",
+        "narration",
+        "whisper",
+        "piper",
+        "review",
+        "triage"
+      ]
+    }
+  ]
+}
