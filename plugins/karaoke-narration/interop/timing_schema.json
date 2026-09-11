@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emblem-nlp.github.io/karaoke-narration/timing_schema-1.0.json",
+  "title": "karaoke timing manifest",
+  "description": "Contract between build_karaoke.py and any reader. Version 1.0 documents all eight keys the builder emits; the prior published reference documented only `words` and `duration`.",
+  "type": "object",
+  "required": ["words", "duration"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "default": "1.0",
+      "description": "ADDED in 1.0. Absent in every manifest built before this schema; readers should assume 1.0 and warn."},
+    "duration": {"type": "number", "minimum": 0, "description": "Total audio length in seconds."},
+    "words": {
+      "type": "array", "minItems": 1,
+      "description": "Flat, ordered, non-overlapping word timings. The highlight loop reads only this.",
+      "items": {"type": "object", "required": ["w", "start", "end"], "properties": {
+        "w": {"type": "string"}, "start": {"type": "number", "minimum": 0}, "end": {"type": "number", "minimum": 0}}}},
+    "sentences": {
+      "type": "array",
+      "description": "Sentence spans. `match_rate` is the per-clip ASR agreement; below ~0.6 the sentence fell back to proportional timing.",
+      "items": {"type": "object", "required": ["i", "text", "start", "end", "words"], "properties": {
+        "i": {"type": "integer"}, "text": {"type": "string"},
+        "start": {"type": "number"}, "end": {"type": "number"},
+        "words": {"type": ["integer", "array"]},
+        "match_rate": {"type": "number", "minimum": 0, "maximum": 1}}}},
+    "blocks": {
+      "type": "array",
+      "description": "Structural markdown blocks, in document order. `narrated: false` marks code fences, which are rendered but carry no timings.",
+      "items": {"type": "object", "required": ["type", "narrated"], "properties": {
+        "type": {"type": "string"}, "level": {"type": ["integer", "null"]},
+        "text": {"type": "string"}, "narrated": {"type": "boolean"},
+        "turn": {"type": "integer"}, "sentences": {"type": ["array", "integer"]}}}},
+    "turns": {
+      "type": "array",
+      "description": "One entry per input file. A multi-turn reader segments on this.",
+      "items": {"type": "object", "required": ["i", "label", "start", "end"], "properties": {
+        "i": {"type": "integer"}, "label": {"type": "string"},
+        "start": {"type": "number"}, "end": {"type": "number"},
+        "words": {"type": "integer"}, "sentences": {"type": "integer"}}}},
+    "source_text": {"type": "string", "description": "The raw markdown the build consumed, verbatim. Hash this against the turn source to detect a stale artifact."},
+    "attribution": {
+      "type": "object",
+      "description": "Provenance. `mode` is NOT self-knowable and must be supplied exactly or omitted. `tokens.input` is unobtainable locally and is null unless API-supplied.",
+      "properties": {
+        "model": {"type": ["string", "null"]}, "model_id": {"type": ["string", "null"]},
+        "mode": {"type": ["string", "null"]},
+        "tokens": {"type": ["object", "null"], "properties": {
+          "input": {"type": ["object", "null"]},
+          "output": {"type": ["object", "null"], "properties": {
+            "count": {"type": "integer"}, "exact": {"type": "boolean"}, "tokenizer": {"type": "string"}}}}}}},
+    "qc": {
+      "type": "object",
+      "description": "The build's self-report. `source_matches_ground_truth` absent means NOT CHECKED, which is not a pass.",
+      "properties": {"passed": {"type": "boolean"}, "checks": {"type": "object", "additionalProperties": {"type": "boolean"}}}}
+  },
+  "additionalProperties": true
+}

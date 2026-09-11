@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Chat response — __SOURCE_LABEL__</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    /* Claude app palette */
+    --bg:#faf9f5;          /* warm cream page */
+    --surface:#f0eee6;     /* slightly deeper cream for chrome */
+    --line:#e3e0d6;
+    --text:#1f1e1d;        /* warm near-black */
+    --text-mid:#4a4842;
+    --text-dim:#8a877d;
+    --accent:#d97757;      /* Claude clay */
+    --accent-soft:#f5e2d8;
+    --underline:#c8483a;   /* sentence line, kept red as requested */
+    --serif:'Tiempos Text','Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif;
+    --sans:'Styrene B',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --mono:ui-monospace,'SF Mono','IBM Plex Mono',Menlo,monospace;
+  }
+  /* Follow the system theme, as the app does. Hard-coding light meant the page
+     fought the app's own dark chrome. Claude's dark surface is a warm near-black
+     rather than neutral grey; the clay accent holds on both, so it is unchanged,
+     and only the sentence underline brightens to keep contrast on dark. */
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#262624;
+      --surface:#30302e;
+      --line:#3f3f3b;
+      --text:#faf9f5;
+      --text-mid:#d4d1c7;
+      --text-dim:#8f8c82;
+      --accent:#d97757;
+      --accent-soft:rgba(217,119,87,.30);
+      --underline:#e5675a;
+    }
+    #transcript span.word.upcoming{color:#84817a;}
+    #transcript span.word.active{color:#faf9f5;}
+    #playBtn{color:#1f1e1d;}
+  }
+  html,body{background:var(--bg) !important; margin:0; padding:0;}
+  *{box-sizing:border-box;}
+  #app{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    min-height:100vh; min-height:100dvh;   /* dvh tracks the iOS dynamic toolbar; vh first as the fallback */
+    display:flex; flex-direction:column;
+  }
+  main{flex:1; padding:0 20px 164px; max-width:720px; margin:0 auto; width:100%;}
+
+  /* Body copy: serif at the app's own weight and contrast. Read text sits at full
+     message contrast; only not-yet-reached words are softened, and gently - the
+     app has no such state, so it should read as a light cue, not a second colour. */
+  #transcript{font-family:var(--serif); font-size:19px; line-height:1.5; color:var(--text);}
+  #transcript span.word{
+    color:var(--text); cursor:pointer; padding:2px 1px; border-radius:3px;
+    transition:color .1s ease, background-color .1s ease;
+  }
+  #transcript span.word.upcoming{color:#8f8c82;}
+  #transcript span.word.active{
+    color:var(--text); background:var(--accent-soft);
+    box-shadow:0 0 0 2px var(--accent-soft);
+  }
+  /* Sentence currently being spoken: continuous red rule under every word.
+     border-bottom per word rather than text-decoration on the wrapper, because a
+     descendant's own background paints over an ancestor's decoration line and
+     broke it exactly under the highlighted word. */
+  #transcript span.sent.speaking span.word{
+    border-bottom:2px solid var(--underline); padding-bottom:3px;
+  }
+  #transcript span.sent.spoken span.word{color:var(--text);}
+
+  .turnhead{
+    display:flex; align-items:center; gap:9px; margin:30px 0 15px;
+    font-family:var(--sans); font-size:11.5px; font-weight:560; letter-spacing:.04em;
+    text-transform:uppercase; color:var(--text-dim); cursor:pointer;
+    padding-bottom:9px; border-bottom:1px solid var(--line);
+  }
+  .turnhead:first-child{margin-top:0;}
+  .turnhead:hover{color:var(--text-mid);}
+  .turnhead .dot{width:6px; height:6px; border-radius:50%; background:var(--line); flex:none;}
+  .turnhead.playing{color:var(--accent); border-bottom-color:var(--accent);}
+  .turnhead.playing .dot{background:var(--accent);}
+  .turnhead .meta{margin-left:auto; text-transform:none; letter-spacing:0; font-weight:400; opacity:.8;}
+
+  /* Pinned. It carries the attribution, which is the one thing you may want to
+     check at any point while reading - having it scroll away defeats its purpose. */
+  .attrib{
+    position:sticky; top:0; z-index:5;
+    display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin:0 0 22px;
+    padding:14px 0 11px; border-bottom:1px solid var(--line);
+    background:var(--bg);
+    font-family:var(--sans); font-size:12.5px; color:var(--text-dim);
+  }
+  .attrib .metrics{margin-left:auto; display:flex; gap:9px; align-items:center;}
+  .attrib .mono{font-family:var(--mono); font-size:11.5px; opacity:.85;}
+  .attrib .dot{width:6px; height:6px; border-radius:50%; background:var(--accent); flex:none;
+               align-self:center;}
+  .attrib .mode{color:var(--text-mid); font-weight:560;}
+  .attrib .mid{color:var(--text-mid); font-weight:560;}
+  .attrib .id{margin-left:auto; font-family:var(--mono); font-size:11.5px; opacity:.85;}
+  .attrib .tok{font-family:var(--mono); font-size:11.5px; opacity:.75; cursor:help;}
+  .attrib .tsep{opacity:.5;}
+  .blk{margin:0 0 20px;}
+  .blk.h1,.blk.h2,.blk.h3{
+    font-family:var(--sans); font-weight:600; color:var(--text);
+    letter-spacing:-.015em; margin:26px 0 11px; line-height:1.35;
+  }
+  .blk.h1{font-size:21px;} .blk.h2{font-size:19px;} .blk.h3{font-size:17px;}
+  .blk.bullet{display:flex; gap:11px; margin:0 0 11px;}
+  .blk.bullet .marker{color:var(--accent); flex:none; line-height:1.5;}
+  /* Collapsible step summary, mirroring the app's own "N steps" disclosure row. */
+  details.steps{margin:0 0 20px;}
+  details.steps > summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
+    font-family:var(--sans); font-size:15px; color:var(--text-dim);
+    padding:4px 0; user-select:none;
+  }
+  details.steps > summary::-webkit-details-marker{display:none;}
+  details.steps > summary .ico{display:flex; align-items:center; gap:2px;}
+  details.steps > summary .ico svg:nth-child(2){margin-left:-4px; opacity:.75;}
+  details.steps > summary .chev{
+    margin-left:auto; transition:transform .18s ease; opacity:.8; font-size:17px; line-height:1;
+  }
+  details.steps[open] > summary .chev{transform:rotate(90deg);}
+  details.steps > summary:hover{color:var(--text-mid);}
+  .steps-body{padding:6px 0 2px 2px;}
+  .step-row{display:flex; gap:11px; margin:0 0 9px; align-items:flex-start;}
+  .step-glyph{
+    flex:none; color:var(--text-dim); display:flex; align-items:center;
+    height:26px; opacity:.85;
+  }
+  .step-row .stext{font-size:17px; line-height:1.5;}
+  .blk.code{
+    font-family:var(--mono); font-size:12.5px; line-height:1.6; white-space:pre-wrap;
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:8px; padding:13px 15px; color:var(--text-mid); overflow-x:auto;
+  }
+  span.word.bold{font-weight:640; color:var(--text);}
+  span.word.code{font-family:var(--mono); font-size:.86em; background:var(--surface); border-radius:3px;}
+  span.word.italic{font-style:italic;}
+
+  footer{
+    position:fixed; left:0; right:0; bottom:0; background:var(--bg);
+    border-top:1px solid var(--line); padding:13px 22px 20px;
+  }
+  .bar-wrap{max-width:720px; margin:0 auto;}
+  #seek{
+    width:100%; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px;
+    background:var(--line); outline:none; cursor:pointer; margin-bottom:13px;
+  }
+  #seek::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; margin-top:-5px;
+  }
+  #seek::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--accent);border:0;}
+  .controls{display:flex; align-items:center; gap:10px;}
+  #time{flex:none;}
+  #followBtn{margin-left:auto;}
+  /* Round clay button, echoing the app's send control */
+  #playBtn{
+    background:var(--accent); border:none; color:#fff; border-radius:50%;
+    width:38px; height:38px; font-size:14px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  #playBtn:disabled{opacity:.4;}
+  #time{font-family:var(--sans); font-size:12.5px; color:var(--text-dim); min-width:94px;}
+  #rate{ font-family:var(--sans); font-size:12.5px; color:var(--text-mid);
+    background:var(--bg); border:1px solid var(--line); border-radius:7px;
+    padding:6px 9px; cursor:pointer;
+  }
+  #followBtn{
+    font-family:var(--sans); font-size:12.5px; color:var(--text-dim);
+    background:none; border:1px solid var(--line); border-radius:7px;
+    padding:6px 9px; cursor:pointer;
+  }
+  #followBtn.on{color:var(--accent); border-color:var(--accent);}
+  .seekwrap{position:relative; margin-bottom:13px;}
+  #markers{position:absolute; left:0; right:0; top:0; height:3px; pointer-events:none;}
+  #markers i{
+    position:absolute; top:-2px; width:2px; height:7px; border-radius:1px;
+    background:var(--text-dim); opacity:.55;
+    transition:background-color .15s ease, opacity .15s ease, transform .15s ease;
+  }
+  #markers i.snapped{
+    background:var(--accent); opacity:1; transform:scaleY(1.6);
+  }
+  #status{font-family:var(--sans); font-size:11.5px; color:var(--accent); margin-top:9px; min-height:14px; line-height:1.5;}
+</style>
+</head>
+<body>
+<div id="app">
+
+<main><div id="transcript"></div></main>
+
+<footer>
+  <div class="bar-wrap">
+    <div class="seekwrap">
+      <input type="range" id="seek" min="0" max="100" value="0" step="0.01" disabled>
+      <div id="markers"></div>
+    </div>
+    <div class="controls">
+      <button id="playBtn" disabled>&#9654;</button>
+      <span id="time">0:00 / 0:00</span>
+      <button id="followBtn" class="on" title="Follow along: auto-scroll to the current word">follow</button>
+      <select id="rate">
+        <option value="0.75">0.75&times;</option>
+        <option value="1" selected>1&times;</option>
+        <option value="1.25">1.25&times;</option>
+        <option value="1.5">1.5&times;</option>
+        <option value="2">2&times;</option>
+      </select>
+    </div>
+    <!-- This text is visible ONLY if the script never runs. It used to read
+         "decoding audio...", the identical string decodeInto() writes, so a
+         page whose JavaScript was blocked was indistinguishable on screen from
+         one mid-decode - which cost a full day of misdiagnosis. Keep it distinct
+         from every string the script can set. -->
+    <div id="status">loading player&hellip;</div>
+  </div>
+</footer>
+
+</div>
+<script>
+/* Embedded by pack_standalone.py. AUDIO is raw base64 (no data: prefix).
+
+   WHY WEB AUDIO INSTEAD OF <audio src="...">:
+   The artifact preview sandbox blocks media loaded from both `data:` and
+   `blob:` URLs - both fail with MEDIA_ERR_SRC_NOT_SUPPORTED (code 4), because
+   both are URL sources subject to the CSP `media-src` directive. Web Audio's
+   decodeAudioData() consumes an ArrayBuffer already held in memory, so no
+   resource is ever fetched and media-src never applies. It also avoids iOS
+   Safari's unreliability with blob: URLs on media elements. Cost: play/pause/
+   seek are managed by hand, since an AudioBufferSourceNode is one-shot.
+
+   The file-picker ("load a different pair") was removed from this standalone
+   template: the audio and timing are already embedded, so there is nothing for
+   it to load. It remains in the multi-file player.html, where it is the point. */
+const EMBEDDED_AUDIO_B64 = "__AUDIO_BASE64_DATA_URI__";
+const EMBEDDED_TIMING = __TIMING_JSON_INLINE__;
+const EMBEDDED_LABEL = "__SOURCE_LABEL__";
+
+const transcript = document.getElementById('transcript');
+const seek = document.getElementById('seek');
+const playBtn = document.getElementById('playBtn');
+const timeEl = document.getElementById('time');
+const rateSel = document.getElementById('rate');
+const statusEl = document.getElementById('status');
+
+let words = [], wordEls = [], activeIdx = -1;
+let sentences = [], sentEls = [], activeSent = -1, blocks = [];
+let turns = [], turnEls = [], activeTurn = -1, detailsEls = [], attribution = null;
+let audioCtx = null, audioBuffer = null, sourceNode = null;
+let markerTimes = [];   // was an implicit sloppy-mode global; declared so the file survives strict mode or bundling
+let isPlaying = false, startCtxTime = 0, startOffset = 0, pausedAt = 0;
+let rate = 1;
+let follow = true;
+
+function setStatus(msg, isError){
+  statusEl.textContent = msg || '';
+  statusEl.style.color = isError ? '#c8483a' : 'var(--accent)';
+}
+function fmt(t){
+  if (!isFinite(t) || t < 0) return '0:00';
+  const m = Math.floor(t/60), s = Math.floor(t%60);
+  return m + ':' + String(s).padStart(2,'0');
+}
+function duration(){ return audioBuffer ? audioBuffer.duration : 0; }
+function currentTime(){
+  if (!audioBuffer) return 0;
+  if (!isPlaying) return pausedAt;
+  return Math.min(startOffset + (audioCtx.currentTime - startCtxTime) * rate, duration());
+}
+
+function b64ToArrayBuffer(b64){
+  b64 = b64.replace(/^data:[^,]*,/, '');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function ensureCtx(){
+  if (audioCtx && audioCtx.state === 'closed') audioCtx = null;   // closed cannot resume; rebuild
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('Web Audio API unavailable in this browser');
+    audioCtx = new AC();
+    // iOS moves a context to its non-standard 'interrupted' state on a phone
+    // call, Siri, or backgrounding. Without this, the transport kept showing the
+    // pause glyph with nothing audible while the highlight drifted on. Tear down
+    // and ask for a tap: resuming automatically is precisely what WebKit refuses
+    // outside a gesture.
+    audioCtx.onstatechange = function(){
+      if (audioCtx && audioCtx.state !== 'running' && isPlaying) interruptedTeardown();
+    };
+  }
+  return audioCtx;
+}
+function interruptedTeardown(){
+  pausedAt = currentTime(); isPlaying = false; stopSource();
+  playBtn.innerHTML = '&#9654;';
+  setStatus('audio interrupted - tap play to resume', true);
+  update();
+}
+// The canonical WebKit audio-session unlock: a one-frame silent source started
+// synchronously inside the gesture task. Harmless elsewhere; on iOS it is what
+// makes the first real source.start() - which lands long after transient
+// activation has expired - actually sound instead of being swallowed.
+function unlockInGesture(ctx){
+  try {
+    const u = ctx.createBufferSource();
+    u.buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+    u.connect(ctx.destination); u.start(0);
+  } catch (e) {}
+}
+
+function decodeInto(arrayBuffer, label, isCancelled){
+  let ctx;
+  try { ctx = ensureCtx(); }
+  catch (err) { setStatus(err.message, true); return Promise.reject(err); }
+  const nbytes = arrayBuffer.byteLength;   // read BEFORE decode: decodeAudioData detaches the buffer
+  // Distinct from the markup's boot text and from every other status, and it
+  // carries the facts a screenshot from a device with no debugger needs. The
+  // ctx.state readout alone would have answered the suspended-context question
+  // on the phone, with no further instrumentation.
+  setStatus('decoding (ctx ' + ctx.state + ', ' + ctx.sampleRate + ' Hz, '
+            + Math.round(nbytes / 1024) + ' KB)');
+  return new Promise(function(resolve, reject){
+    ctx.decodeAudioData(arrayBuffer, resolve, function(e){   // callback form: Safari
+      // WebKit's legacy error callback may pass null, or a DOMException with an
+      // empty message, which rendered "Decode failed: null". Normalise to one
+      // string that separates a codec rejection, a detached buffer and a
+      // non-running context - on a device where this text is the only debugger.
+      const what = (e && (e.name || e.message))
+                || ('error callback fired with ' + Object.prototype.toString.call(e));
+      reject(new Error('decodeAudioData: ' + what + ' [' + nbytes + ' bytes, ctx '
+                       + ctx.state + ' / ' + ctx.sampleRate + ' Hz]'));
+    });
+  }).then(function(buf){
+    // A decode that settles AFTER the watchdog already reported must not wipe
+    // that report: the late setStatus('') below would silently erase the only
+    // explanation the reader was given.
+    if (isCancelled && isCancelled()) return;
+    audioBuffer = buf;
+    pausedAt = 0; isPlaying = false; activeIdx = -1; activeSent = -1; activeTurn = -1;
+    seek.max = buf.duration; seek.disabled = false; playBtn.disabled = false;
+    setStatus('');
+    render();
+    drawMarkers();
+  }).catch(function(err){
+    setStatus('Decode failed: ' + (err && err.message ? err.message : err), true);
+    // Rethrow. Without it this promise RESOLVED on every failure, and the caller
+    // replaced the real DOMException with a generic "produced no audio buffer".
+    throw err;
+  });
+}
+
+// Audio is loaded on the FIRST TAP, never at page load.
+//
+// ESTABLISHED, on a real iPhone: the 1.28.0 build - which constructed the
+// AudioContext and called decodeAudioData at page load - sat at its boot status
+// with playback never enabled; this build, which defers every piece of audio
+// work to the first tap, plays. The play button was enabled only inside the
+// decode's success path, so any failure before that point left it dead.
+//
+// NOT ESTABLISHED: why the load-time path failed. This fix moves the base64
+// decode, the byte loop AND decodeAudioData behind the tap together, so it
+// cures several rival causes at once and cannot tell them apart. An earlier
+// revision of this comment stated as fact that WebKit withholds
+// decodeAudioData's callbacks on a non-running context. That is unproven - the
+// eager-decode-then-unlock pattern used by howler.js and Tone.js works on iOS,
+// which cuts against it - and is withdrawn here rather than edited away.
+//
+// Gesture-first ordering is kept because it is the conservative shape:
+// resume() and the silent unlock from inside the tap, then the heavy work.
+let audioReady = null;
+function ensureAudioReady(){
+  if (audioBuffer) return Promise.resolve();
+  if (audioReady) return audioReady;
+  let ctx;
+  try { ctx = ensureCtx(); }
+  catch (err) { setStatus(err.message, true); return Promise.reject(err); }
+  // Everything that needs live user activation happens HERE, synchronously,
+  // before the first promise hop: the resume and the silent unlock. And the
+  // test is for the one SAFE state rather than one unsafe one - WebKit's
+  // non-standard 'interrupted' state is not 'suspended', and '=== suspended'
+  // would skip the resume and reintroduce the identical silent hang.
+  const resumed = (ctx.state === 'running') ? Promise.resolve() : ctx.resume();
+  unlockInGesture(ctx);
+  let cancelled = false;
+  audioReady = resumed.then(function(){
+    return new Promise(function(resolve, reject){
+      // A decode that never settles must surface as an error rather than an
+      // eternal "loading" - the failure this whole path exists to end.
+      const watchdog = setTimeout(function(){
+        cancelled = true;
+        reject(new Error('decode did not complete within 25s on this device'));
+      }, 25000);
+      decodeInto(b64ToArrayBuffer(EMBEDDED_AUDIO_B64), EMBEDDED_LABEL, function(){ return cancelled; })
+        .then(function(){ clearTimeout(watchdog); if (!cancelled) resolve(); },
+              function(e){ clearTimeout(watchdog); reject(e); });
+    });
+  }).then(function(){
+    if (!audioBuffer) throw new Error('decode produced no audio buffer');
+  }).catch(function(err){
+    audioReady = null;   // let a second tap retry rather than dead-ending
+    setStatus('Could not load audio: ' + (err && err.message ? err.message : err), true);
+    throw err;
+  });
+  return audioReady;
+}
+
+function stopSource(){
+  if (sourceNode){
+    try { sourceNode.onended = null; sourceNode.stop(); } catch(e){}
+    sourceNode = null;
+  }
+}
+
+function playFrom(offset){
+  if (!audioBuffer) return;
+  let ctx;
+  try { ctx = ensureCtx(); } catch (err) { setStatus(err.message, true); return; }
+  const start = function(){
+    stopSource();
+    sourceNode = ctx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.playbackRate.value = rate;
+    sourceNode.connect(ctx.destination);
+    sourceNode.onended = function(){
+      if (!isPlaying) return;
+      if (currentTime() >= duration() - 0.08){
+        isPlaying = false; pausedAt = 0; playBtn.innerHTML = '&#9654;'; update();
+      }
+    };
+    sourceNode.start(0, Math.max(0, Math.min(offset, duration() - 0.01)));
+    startCtxTime = ctx.currentTime; startOffset = offset;
+    isPlaying = true; playBtn.innerHTML = '&#10073;&#10073;';
+    requestAnimationFrame(loop);
+  };
+  if (ctx.state !== 'running'){   // covers 'suspended' AND WebKit's 'interrupted'
+    ctx.resume().then(start).catch(function(err){ setStatus('Audio blocked: ' + err.message, true); });
+  } else { start(); }
+}
+
+// Every playback entry point routes here, so none is a silent no-op before the
+// first load. Previously word-click, turn-head click and Space all early-returned
+// on !audioBuffer, which on iOS meant they did nothing until the play button had
+// been tapped once - a dead tap with no feedback.
+function startAt(t){
+  pausedAt = t;
+  if (audioBuffer){ playFrom(t); return; }
+  setStatus('loading audio…');
+  ensureAudioReady().then(function(){ playFrom(pausedAt); }, function(){});
+}
+
+function pause(){
+  if (!isPlaying) return;
+  pausedAt = currentTime();
+  isPlaying = false;
+  stopSource();
+  playBtn.innerHTML = '&#9654;';
+  update();
+}
+
+// Step glyphs, matching the app: a wrench for tool execution, a pencil for file
+// edits, a document for presented files. Previously every step carried the same
+// wrench regardless of what it did, which made the icon decorative rather than
+// informative.
+const STEP_ICONS = {
+  tool: '<path d="M14.6 6.1a4.3 4.3 0 0 1 5.6-5.6l-3 3 .5 2.9 2.9.5 3-3a4.3 4.3 0 0 1-5.6 5.6'
+      + 'L5.6 20.4a2.2 2.2 0 0 1-3.1-3.1z"/>',
+  edit: '<path d="M16.9 3.2a2.6 2.6 0 0 1 3.7 3.7L7.4 20.1 2.5 21.5l1.4-4.9z"/>'
+      + '<path d="M15.2 4.9l3.7 3.7"/>',
+  file: '<path d="M13.5 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5z"/>'
+      + '<path d="M13.5 2.5v6h6"/>'
+      + '<path d="M8 12.6c.9-.8 1.8-.8 2.7 0s1.8.8 2.7 0"/>'
+      + '<path d="M8 16.1c.9-.8 1.8-.8 2.7 0s1.8.8 2.7 0"/>'
+};
+function iconSvg(kind, size){
+  size = size || 15;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" '
+    + 'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    + (STEP_ICONS[kind] || STEP_ICONS.tool) + '</svg>';
+}
+
+function renderSentence(sent, parent){
+  const sEl = document.createElement('span');
+  sEl.className = 'sent';
+  sent.words.forEach(function(w){
+    const span = document.createElement('span');
+    span.className = 'word upcoming' + (w.s ? ' ' + w.s.join(' ') : '');
+    span.textContent = w.w + ' ';
+    span.addEventListener('click', function(){ startAt(w.start); });
+    sEl.appendChild(span);
+    wordEls.push(span);
+  });
+  parent.appendChild(sEl);
+  parent.appendChild(document.createTextNode(' '));
+  sentEls.push(sEl);
+}
+
+function render(){
+  transcript.innerHTML = '';
+  wordEls = []; sentEls = []; turnEls = []; detailsEls = [];
+  // Attribution byline. Rendered only if the build supplied it - an absent
+  // model is shown as nothing rather than guessed.
+  if (attribution && (attribution.model || attribution.model_id || attribution.mode)){
+    const a = document.createElement('div');
+    a.className = 'attrib';
+    const dot = document.createElement('span'); dot.className = 'dot';
+    a.appendChild(dot);
+    if (attribution.model){
+      const m = document.createElement('span'); m.className = 'mid';
+      m.textContent = attribution.model; a.appendChild(m);
+    }
+    if (attribution.mode){
+      const sep = document.createElement('span'); sep.textContent = '\u00b7';
+      const md = document.createElement('span'); md.className = 'mode';
+      md.textContent = attribution.mode;
+      a.appendChild(sep); a.appendChild(md);
+    }
+    const metrics = document.createElement('span'); metrics.className = 'metrics';
+    // Word count and duration are the two things actually worth glancing at while
+    // reviewing; both are known exactly. Input tokens are deliberately absent -
+    // see below.
+    const wc = document.createElement('span'); wc.className = 'mono';
+    wc.textContent = words.length.toLocaleString() + ' words';
+    metrics.appendChild(wc);
+    // OUTPUT tokens only. The input field was removed rather than shown as "n/a"
+    // on every single build: a permanently-empty column is not information, it is
+    // furniture. Input tokens cannot be computed from inside a conversation at
+    // all (the serialized prompt is never exposed), so there is no future build
+    // in which that field would populate on its own.
+    if (attribution.tokens && attribution.tokens.output){
+      const fmtTok = function(t, which){
+        if (!t) return {text: 'n/a', title: which + ' tokens are not visible from '
+          + 'inside a conversation - the serialized prompt is never exposed to the model. '
+          + 'Supply the API-reported figure to show it.'};
+        return {text: (t.exact ? '' : '~') + t.count.toLocaleString(),
+                title: t.exact ? which + ' tokens, exact, reported by the API'
+                               : which + ' tokens, estimated via ' + t.tokenizer
+                                 + ' - not Anthropic\'s tokenizer, and not billed usage'};
+      };
+      const o = fmtTok(attribution.tokens.output, 'output');
+      const tk = document.createElement('span'); tk.className = 'tok mono';
+      tk.textContent = o.text + ' tok';
+      tk.title = o.title;
+      metrics.appendChild(tk);
+    }
+    if (attribution.model_id){
+      const id = document.createElement('span'); id.className = 'mono';
+      id.textContent = attribution.model_id; id.style.opacity = '.7';
+      metrics.appendChild(id);
+    }
+    a.appendChild(metrics);
+    transcript.appendChild(a);
+  }
+  let lastTurn = null;
+  blocks.forEach(function(b){
+    const tIdx = (b.turn === undefined ? 0 : b.turn);
+    if (turns.length > 1 && tIdx !== lastTurn){
+      const t = turns[tIdx] || {label: 'turn ' + (tIdx + 1)};
+      const h = document.createElement('div');
+      h.className = 'turnhead';
+      const dot = document.createElement('span'); dot.className = 'dot';
+      const lbl = document.createElement('span'); lbl.textContent = t.label || ('turn ' + (tIdx+1));
+      const meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = (t.words !== undefined ? t.words + ' words' : '');
+      h.appendChild(dot); h.appendChild(lbl); h.appendChild(meta);
+      h.addEventListener('click', function(){ startAt(t.start || 0); });
+      transcript.appendChild(h);
+      turnEls[tIdx] = h;
+      lastTurn = tIdx;
+    }
+    // Code fences render verbatim but carry no timings - reading code aloud is
+    // useless, so they are shown for context and skipped by the narration.
+    if (b.type === 'quote'){
+      const det = document.createElement('details');
+      det.className = 'steps';
+      const sum = document.createElement('summary');
+      const types = b.types || [];
+      const distinct = [];
+      types.forEach(function(t){ if (distinct.indexOf(t) < 0) distinct.push(t); });
+      if (!distinct.length) distinct.push('tool');
+      const ico = document.createElement('span');
+      ico.className = 'ico';
+      // Wrench, matching the app's tool-step glyph. The previous path rendered as
+      // an ambiguous hook at 15px because the jaw was implied rather than drawn.
+      // Composite when a group mixes kinds, matching the app's overlapped glyph.
+      ico.innerHTML = distinct.slice(0, 2).map(function(k){ return iconSvg(k, 15); }).join('');
+      const lbl = document.createElement('span');
+      lbl.textContent = b.sentences.length + (b.sentences.length === 1 ? ' step' : ' steps');
+      const chev = document.createElement('span');
+      chev.className = 'chev'; chev.textContent = '\u203a';
+      sum.appendChild(ico); sum.appendChild(lbl); sum.appendChild(chev);
+      det.appendChild(sum);
+      const body = document.createElement('div');
+      body.className = 'steps-body';
+      b.sentences.forEach(function(sent, n){
+        const row = document.createElement('div');
+        row.className = 'step-row';
+        // Icon, not an ordinal. The app labels a step with what it did, and the
+        // description already is the step's name - numbering it added a prefix
+        // the real UI never shows.
+        const gl = document.createElement('span');
+        gl.className = 'step-glyph';
+        gl.innerHTML = iconSvg(types[n] || 'tool', 14);
+        const host = document.createElement('div');
+        host.className = 'stext';
+        renderSentence(sent, host);
+        row.appendChild(gl); row.appendChild(host);
+        body.appendChild(row);
+      });
+      det.appendChild(body);
+      transcript.appendChild(det);
+      // Auto-open when narration reaches it, so the highlight is never hidden
+      // inside a collapsed disclosure.
+      if (b.sentences.length){
+        detailsEls.push({el: det,
+                         start: b.sentences[0].start,
+                         end: b.sentences[b.sentences.length - 1].end});
+      }
+      return;
+    }
+    if (b.type === 'code'){
+      const pre = document.createElement('div');
+      pre.className = 'blk code';
+      pre.appendChild(document.createTextNode(b.text));
+      transcript.appendChild(pre);
+      return;
+    }
+    const el = document.createElement('div');
+    if (b.type === 'heading'){ el.className = 'blk h' + Math.min(b.level, 3); }
+    else if (b.type === 'bullet'){
+      el.className = 'blk bullet';
+      const m = document.createElement('span');
+      m.className = 'marker'; m.textContent = '\u2022';
+      el.appendChild(m);
+    }
+    else { el.className = 'blk p'; }
+    const host = document.createElement('div');
+    b.sentences.forEach(function(sent){ renderSentence(sent, host); });
+    el.appendChild(host);
+    transcript.appendChild(el);
+  });
+  update();
+}
+
+function drawMarkers(){
+  // One tick per narrated block, at that block's start. Gives the timeline the
+  // same structure the transcript has, so a long response can be navigated by
+  // section rather than by scrubbing blindly.
+  const host = document.getElementById('markers');
+  host.innerHTML = '';
+  markerTimes = [];
+  const d = duration();
+  if (!d) return;
+  blocks.forEach(function(b){
+    if (!b.narrated || !b.sentences || !b.sentences.length) return;
+    const start = b.sentences[0].start;
+    if (start <= 0.01) return;
+    const tick = document.createElement('i');
+    tick.style.left = ((start / d) * 100) + '%';
+    tick.dataset.t = start;
+    host.appendChild(tick);
+    markerTimes.push(start);
+  });
+}
+
+// Snap-to-marker while scrubbing. Threshold scales gently with duration so a
+// 20s clip and a 5-minute one both feel reasonable: 2% of duration, floored at
+// 0.5s (otherwise short files never snap) and capped at 4s (otherwise long
+// files snap from too far away to feel intentional).
+function snapThreshold(){
+  const d = duration();
+  return Math.min(Math.max(d * 0.02, 0.5), 4);
+}
+function nearestMarker(t){
+  let best = null, bestDist = Infinity;
+  for (let i = 0; i < markerTimes.length; i++){
+    const dist = Math.abs(markerTimes[i] - t);
+    if (dist < bestDist){ bestDist = dist; best = markerTimes[i]; }
+  }
+  return (best !== null && bestDist <= snapThreshold()) ? best : null;
+}
+function flashMarkerAt(t){
+  document.querySelectorAll('#markers i').forEach(function(el){
+    if (Math.abs(parseFloat(el.dataset.t) - t) < 0.01){
+      el.classList.add('snapped');
+      setTimeout(function(){ el.classList.remove('snapped'); }, 260);
+    }
+  });
+}
+
+function findSentence(t){
+  for (let i = 0; i < sentences.length; i++){
+    if (t >= sentences[i].start && t <= sentences[i].end) return i;
+  }
+  return -1;
+}
+
+function findActive(t){
+  let lo = 0, hi = words.length - 1, ans = -1;
+  while (lo <= hi){
+    const mid = (lo + hi) >> 1;
+    if (words[mid].start <= t){ ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  if (ans >= 0 && t > words[ans].end + 0.6) return -1;   // silence between sentences
+  return ans;
+}
+
+function update(){
+  const t = currentTime();
+  if (turns.length){
+    let tIdx = -1;
+    for (let i = 0; i < turns.length; i++){
+      if (t >= turns[i].start && t <= turns[i].end){ tIdx = i; break; }
+    }
+    if (tIdx !== activeTurn){
+      if (activeTurn >= 0 && turnEls[activeTurn]) turnEls[activeTurn].className = 'turnhead';
+      if (tIdx >= 0 && turnEls[tIdx]) turnEls[tIdx].className = 'turnhead playing';
+      activeTurn = tIdx;
+    }
+  }
+  for (let i = 0; i < detailsEls.length; i++){
+    const d = detailsEls[i];
+    if (t >= d.start - 0.2 && t <= d.end + 0.2 && !d.el.open) d.el.open = true;
+  }
+  const sIdx = findSentence(t);
+  if (sIdx !== activeSent){
+    if (activeSent >= 0 && sentEls[activeSent]) sentEls[activeSent].className = 'sent spoken';
+    if (sIdx >= 0 && sentEls[sIdx]) sentEls[sIdx].className = 'sent speaking';
+    activeSent = sIdx;
+  }
+  const idx = findActive(t);
+  if (idx !== activeIdx){
+    if (activeIdx >= 0 && wordEls[activeIdx]){
+      wordEls[activeIdx].className = wordEls[activeIdx].className.replace(' active','');
+    }
+    if (idx >= 0 && wordEls[idx]){
+      wordEls[idx].className += ' active';
+      if (follow) wordEls[idx].scrollIntoView({block:'center', behavior:'smooth'});
+    }
+    activeIdx = idx;
+  }
+  for (let i = 0; i < wordEls.length; i++){
+    if (i === activeIdx) continue;
+    wordEls[i].classList.toggle('upcoming', words[i].start > t);
+  }
+  const d = duration();
+  if (d){
+    seek.value = t;
+    const pct = (t / d) * 100;
+    seek.style.background = 'linear-gradient(to right, var(--accent) ' + pct + '%, var(--line) ' + pct + '%)';
+  }
+  timeEl.textContent = fmt(t) + ' / ' + fmt(d);
+}
+
+function loop(){ update(); if (isPlaying) requestAnimationFrame(loop); }
+
+const followBtn = document.getElementById('followBtn');
+followBtn.addEventListener('click', function(){
+  follow = !follow;
+  followBtn.classList.toggle('on', follow);
+  followBtn.textContent = follow ? 'follow' : 'free';
+  followBtn.title = follow
+    ? 'Following along: the view scrolls to the current word'
+    : 'Free scrolling: the view stays where you put it';
+});
+playBtn.addEventListener('click', function(){ isPlaying ? pause() : startAt(pausedAt); });
+// Backgrounding the app can interrupt the context without a statechange event
+// reaching us in time; re-check on return so a stale "playing" state is not
+// left on screen.
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden && audioCtx && audioCtx.state !== 'running' && isPlaying) interruptedTeardown();
+});
+seek.addEventListener('input', function(){
+  let t = parseFloat(seek.value);
+  const snap = nearestMarker(t);
+  if (snap !== null){
+    t = snap;
+    seek.value = t;           // reflect the snapped position, not the raw drag point
+    flashMarkerAt(t);
+  }
+  pausedAt = t;
+  if (isPlaying) playFrom(t); else update();
+});
+rateSel.addEventListener('change', function(){
+  const wasPlaying = isPlaying;
+  const t = currentTime();
+  if (wasPlaying) pause();
+  rate = parseFloat(rateSel.value);
+  pausedAt = t;
+  if (wasPlaying) playFrom(t);
+});
+document.addEventListener('keydown', function(e){
+  if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT'){
+    e.preventDefault(); isPlaying ? pause() : startAt(pausedAt);
+  }
+});
+
+// Boot
+words = EMBEDDED_TIMING.words;
+sentences = EMBEDDED_TIMING.sentences || [{i:0, text:'', start:0, end:1e9, words:words}];
+turns = EMBEDDED_TIMING.turns || [];
+attribution = EMBEDDED_TIMING.attribution || null;
+blocks = EMBEDDED_TIMING.blocks || [{type:'paragraph', level:0, turn:0, narrated:true, text:'', sentences:sentences}];
+render();
+// No audio work at boot: no base64 decode, no AudioContext, no decodeAudioData.
+// The transcript needs none of it and must never wait on it. See the note above
+// ensureAudioReady() for what is and is not known about why the load-time path
+// failed on iOS. An earlier revision of this comment blamed "a JS memory
+// ceiling"; a 167 KB file failing identically to a 1.1 MB one refuted that, and
+// the claim is withdrawn here rather than silently removed.
+setStatus('tap play to load audio');
+playBtn.disabled = false;
+</script>
+</body>
+</html>

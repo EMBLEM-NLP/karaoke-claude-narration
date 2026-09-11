@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karaoke Review</title>
+<style>
+  :root{
+    --bg:#12141a; --panel:#181b23; --line:#262a35;
+    --text:#c9cdd6; --text-dim:#5b6272; --text-read:#7c8293;
+    --accent:#e8a33d; --accent-dim:#4a3a1e;
+    --mono:'IBM Plex Mono','SF Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    min-height:100vh; display:flex; flex-direction:column;
+  }
+  header{
+    padding:14px 20px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .brand{font-family:var(--mono); font-size:12px; letter-spacing:.12em; color:var(--text-dim); text-transform:uppercase;}
+  .src{font-family:var(--mono); font-size:12px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;}
+  #picker{margin-left:auto; display:flex; gap:8px;}
+  #picker input[type=file]{display:none;}
+  .fbtn{
+    font-family:var(--mono); font-size:11px; color:var(--text-dim); background:var(--panel);
+    border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer;
+  }
+  .fbtn:hover{color:var(--text); border-color:var(--text-dim);}
+
+  main{flex:1; padding:28px 20px 140px; max-width:760px; margin:0 auto; width:100%;}
+  #transcript{font-size:22px; line-height:1.85; letter-spacing:.001em;}
+  #transcript span.word{
+    color:var(--text-read); cursor:pointer; padding:1px 2px; border-radius:4px;
+    transition:color .08s ease, background-color .08s ease;
+  }
+  #transcript span.word.upcoming{color:var(--text-dim);}
+  #transcript span.word:hover{background:var(--line);}
+  #transcript span.word.active{
+    color:#161811; background:var(--accent); font-weight:600;
+  }
+  #empty{color:var(--text-dim); font-family:var(--mono); font-size:13px; line-height:1.7;}
+  #empty b{color:var(--text);}
+
+  footer{
+    position:fixed; left:0; right:0; bottom:0; background:var(--panel);
+    border-top:1px solid var(--line); padding:12px 20px 16px;
+  }
+  .bar-wrap{max-width:760px; margin:0 auto;}
+  #seek{
+    width:100%; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
+    background:linear-gradient(to right, var(--accent) 0%, var(--accent) 0%, var(--line) 0%, var(--line) 100%);
+    outline:none; cursor:pointer; margin-bottom:10px;
+  }
+  #seek::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; margin-top:-4.5px;
+  }
+  .controls{display:flex; align-items:center; gap:14px; max-width:760px; margin:0 auto;}
+  .controls button{
+    background:none; border:1px solid var(--line); color:var(--text); border-radius:6px;
+    width:34px; height:34px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .controls button:hover{border-color:var(--accent); color:var(--accent);}
+  #time{font-family:var(--mono); font-size:12px; color:var(--text-dim); min-width:92px;}
+  #rate{
+    margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--text-dim);
+    background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">Karaoke Review</span>
+  <span class="src" id="srcLabel">no file loaded</span>
+  <div id="picker">
+    <button class="fbtn" id="pickBtn">load mp3 + timing.json</button>
+    <input type="file" id="fileInput" accept="audio/mpeg,.mp3,.json" multiple>
+  </div>
+</header>
+
+<main>
+  <div id="empty">
+    Load a narration to review it. <b>Tap any word to jump the audio there</b> — this is the
+    triage view: scan the transcript, tap where something's off, listen, keep moving.
+    <br><br>
+    Expects a pair of files from <code>build_karaoke.py</code>: <b>name.mp3</b> and
+    <b>name.timing.json</b>. Drop both in via the loader above, or pass
+    <code>?src=name</code> in the URL if they're hosted alongside this page.
+  </div>
+  <div id="transcript" style="display:none;"></div>
+</main>
+
+<audio id="audio"></audio>
+
+<footer>
+  <div class="bar-wrap">
+    <input type="range" id="seek" min="0" max="100" value="0" step="0.01" disabled>
+    <div class="controls">
+      <button id="playBtn" disabled>▶</button>
+      <span id="time">0:00 / 0:00</span>
+      <select id="rate">
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+  </div>
+</footer>
+
+<script>
+const audio = document.getElementById('audio');
+const transcript = document.getElementById('transcript');
+const emptyEl = document.getElementById('empty');
+const seek = document.getElementById('seek');
+const playBtn = document.getElementById('playBtn');
+const timeEl = document.getElementById('time');
+const rateSel = document.getElementById('rate');
+const srcLabel = document.getElementById('srcLabel');
+const pickBtn = document.getElementById('pickBtn');
+const fileInput = document.getElementById('fileInput');
+
+let words = [];       // [{w, start, end}]
+let wordEls = [];
+let activeIdx = -1;
+
+function fmt(t){
+  if (!isFinite(t)) return '0:00';
+  const m = Math.floor(t/60), s = Math.floor(t%60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function renderTranscript(){
+  transcript.innerHTML = '';
+  wordEls = words.map((w, i) => {
+    const span = document.createElement('span');
+    span.className = 'word upcoming';
+    span.textContent = w.w + ' ';
+    span.dataset.i = i;
+    span.addEventListener('click', () => {
+      audio.currentTime = w.start;
+      if (audio.paused) audio.play();
+    });
+    transcript.appendChild(span);
+    return span;
+  });
+  transcript.style.display = 'block';
+  emptyEl.style.display = 'none';
+}
+
+// Binary search for the active word at time t — cheap enough to call every
+// timeupdate/rAF tick even on a long narration.
+function findActive(t){
+  let lo = 0, hi = words.length - 1, ans = -1;
+  while (lo <= hi){
+    const mid = (lo + hi) >> 1;
+    if (words[mid].start <= t){ ans = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  if (ans >= 0 && t > words[ans].end + 0.6) return -1; // in a gap between sentences
+  return ans;
+}
+
+function tick(){
+  const t = audio.currentTime;
+  const idx = findActive(t);
+  if (idx !== activeIdx){
+    if (activeIdx >= 0 && wordEls[activeIdx]) wordEls[activeIdx].className = 'word';
+    if (idx >= 0 && wordEls[idx]){
+      wordEls[idx].className = 'word active';
+      wordEls[idx].scrollIntoView({block:'center', behavior:'smooth'});
+    }
+    activeIdx = idx;
+  }
+  // grey out words not yet reached, for scan-ahead clarity
+  wordEls.forEach((el, i) => {
+    if (i === activeIdx) return;
+    el.classList.toggle('upcoming', words[i].start > t);
+  });
+  if (audio.duration){
+    seek.value = t;
+    const pct = (t / audio.duration) * 100;
+    seek.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--line) ${pct}%)`;
+  }
+  timeEl.textContent = `${fmt(t)} / ${fmt(audio.duration)}`;
+  if (!audio.paused) requestAnimationFrame(tick);
+}
+
+audio.addEventListener('play', () => { playBtn.textContent = '⏸'; requestAnimationFrame(tick); });
+audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+audio.addEventListener('loadedmetadata', () => {
+  seek.max = audio.duration; seek.disabled = false; playBtn.disabled = false;
+  timeEl.textContent = `0:00 / ${fmt(audio.duration)}`;
+});
+playBtn.addEventListener('click', () => audio.paused ? audio.play() : audio.pause());
+seek.addEventListener('input', () => { audio.currentTime = seek.value; tick(); });
+rateSel.addEventListener('change', () => { audio.playbackRate = parseFloat(rateSel.value); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT'){
+    e.preventDefault(); audio.paused ? audio.play() : audio.pause();
+  }
+});
+
+function loadFromURLs(mp3Url, jsonUrl, label){
+  fetch(jsonUrl).then(r => r.json()).then(data => {
+    words = data.words;
+    audio.src = mp3Url;
+    srcLabel.textContent = label;
+    renderTranscript();
+  }).catch(err => alert('Could not load timing.json: ' + err));
+}
+
+pickBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  const files = Array.from(fileInput.files);
+  const mp3 = files.find(f => f.name.endsWith('.mp3'));
+  const json = files.find(f => f.name.endsWith('.json'));
+  if (!mp3 || !json){ alert('Select both the .mp3 and the .timing.json'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    words = JSON.parse(reader.result).words;
+    audio.src = URL.createObjectURL(mp3);
+    srcLabel.textContent = mp3.name;
+    renderTranscript();
+  };
+  reader.readAsText(json);
+});
+
+// ?src=name -> loads name.mp3 + name.timing.json from this page's folder
+const params = new URLSearchParams(location.search);
+if (params.get('src')){
+  const base = params.get('src');
+  loadFromURLs(base + '.mp3', base + '.timing.json', base);
+}
+</script>
+</body>
+</html>

@@ -3,10 +3,9 @@
 Word-highlighted, tap-to-seek review player for narration scripts — and, on Claude Code,
 automatic narration of every assistant turn.
 
-Published from `EMBLEM-NLP/karaoke-claude-narration`, which is also a Claude Code plugin
-marketplace. Self-contained: no monorepo or sibling repository is required. The current
-version is in `VERSION`; do not restate it here, since a hand-copied number in prose is
-exactly the drift `scripts/version-guard.sh` exists to catch and cannot see.
+Marketplace package, version `2.4.1`. The GitHub repository is named
+`karaoke-claude-narration`; the plugin is still named `karaoke-narration`, and the
+marketplace is still named `emblem-nlp`.
 
 ## Why
 
@@ -49,15 +48,10 @@ claude plugin marketplace add EMBLEM-NLP/karaoke-claude-narration
 claude plugin install karaoke-narration@emblem-nlp
 ```
 
-Three names are involved here and they are deliberately not all the same — copy the commands
-rather than deriving them:
-
-- the **repository** is `EMBLEM-NLP/karaoke-claude-narration` (what `marketplace add` takes)
-- the **marketplace** is `emblem-nlp` (from `name` in `.claude-plugin/marketplace.json`)
-- the **plugin** is `karaoke-narration` (from `name` in its `plugin.json`)
-
-So the install target is `karaoke-narration@emblem-nlp` regardless of what the repo is
-called, and renaming the repo later changes only the `marketplace add` line.
+The marketplace is registered from
+`EMBLEM-NLP/karaoke-claude-narration`, while the install id remains
+`karaoke-narration@emblem-nlp`. Repo name, plugin name, and marketplace name are separate
+Claude Code plugin identifiers.
 
 This registers all three hooks in `hooks/hooks.json` from the plugin itself — verified with
 `claude plugin details`, which reports `Hooks (3) SessionStart, PostModelSwitch, Stop`. No
@@ -128,9 +122,6 @@ rather than through a shell):
 | `SessionStart` | `scripts/version-guard.sh --report` | reports version drift; read-only, no network, always exits 0 |
 | `PostModelSwitch` | `scripts/record_model.py` | records the live model so narration attribution cannot go stale |
 | `Stop` | `scripts/stop_hook.py` | narrates the finished turn; async, never blocks, always exits 0 |
-
-`SessionStart` also runs `scripts/preflight.sh --report`, which reports missing runtime
-dependencies instead of letting them surface as buried async failures in `hook.log`.
 
 ## Versioning
 
