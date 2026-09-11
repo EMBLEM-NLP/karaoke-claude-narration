@@ -1,0 +1,36 @@
+{
+  "name": "karaoke-narration",
+  "version": "2.4.1",
+  "description": "Word-highlighted, tap-to-seek narration review for ChatGPT and Codex, with explicit narration tools and optional trusted Codex hooks.",
+  "author": {
+    "name": "emblem-nlp",
+    "url": "https://github.com/EMBLEM-NLP"
+  },
+  "homepage": "https://github.com/EMBLEM-NLP/karaoke-claude-narration",
+  "repository": "https://github.com/EMBLEM-NLP/karaoke-claude-narration",
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "karaoke",
+    "narration",
+    "whisper",
+    "piper",
+    "codex",
+    "review"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Karaoke Narration",
+    "shortDescription": "Narrate responses with synced word highlighting.",
+    "longDescription": "Builds verified narration bundles for ChatGPT and Codex. Use explicit MCP tools in ChatGPT Work and web/mobile surfaces, and trusted Codex lifecycle hooks where the runtime supports automatic Stop-hook narration.",
+    "developerName": "EMBLEM-NLP",
+    "category": "Productivity",
+    "capabilities": [
+      "Audio",
+      "Interactive",
+      "Review"
+    ],
+    "websiteURL": "https://github.com/EMBLEM-NLP/karaoke-claude-narration"
+  }
+}
