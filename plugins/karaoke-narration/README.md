@@ -3,7 +3,7 @@
 Word-highlighted, tap-to-seek review player for narration scripts — and, on Claude Code,
 automatic narration of every assistant turn.
 
-Marketplace package, version `2.4.1`. The GitHub repository is named
+Marketplace package, version `2.5.0`. The GitHub repository is named
 `karaoke-claude-narration`; the plugin is still named `karaoke-narration`, and the
 marketplace is still named `emblem-nlp`.
 
@@ -27,10 +27,9 @@ pip install --break-system-packages piper-tts faster-whisper numpy
 
 Run `scripts/preflight.sh --report` at any time to check what's actually present and
 get the exact fix for whatever's missing — it also runs automatically at `SessionStart`
-once the hooks are installed. Don't fix a preflight gap by running
-`pip install -r requirements.txt`: that file also carries the separate MCP server's
-dependencies (`mcp[cli]`, `fastapi`, `uvicorn`) and installing it as one shot can trigger
-an unrelated `PyJWT` pip/apt conflict. Use the two commands above for narration alone.
+once the hooks are installed. `requirements.txt` carries narration-only dependencies as of
+2.5.0; the MCP server's dependencies moved to the companion connector repo along with
+`mcp/` itself (see "MCP server" below).
 
 ## Install — the marketplace route first
 
@@ -53,8 +52,10 @@ The marketplace is registered from
 `karaoke-narration@emblem-nlp`. Repo name, plugin name, and marketplace name are separate
 Claude Code plugin identifiers.
 
-This registers all three hooks in `hooks/hooks.json` from the plugin itself — verified with
-`claude plugin details`, which reports `Hooks (3) SessionStart, PostModelSwitch, Stop`. No
+This registers all four hooks in `hooks/hooks.json` from the plugin itself — confirmed by
+reading the manifest directly (`SessionStart`, `UserPromptSubmit`, `PostModelSwitch`,
+`Stop`); `claude plugin details` reflects whatever was loaded at session start, so a session
+already running when this file last changed will under-report the count until restarted. No
 one edits `~/.claude/settings.json`, by hand or otherwise. Works the same in a local CLI and
 in a remote/cloud session. Run `bash setup.sh --apply` separately for the runtime
 dependencies; installing a plugin installs no software (see Runtime requirements).
@@ -63,7 +64,7 @@ dependencies; installing a plugin installs no software (see Runtime requirements
 marketplace repo. It merges the hook entries into `~/.claude/settings.json` without
 disturbing what is already there.
 
-> **Do not run both routes at once.** Each supplies the same three hooks, so a machine with
+> **Do not run both routes at once.** Each supplies the same four hooks, so a machine with
 > both wired narrates every turn twice. If you switch to the marketplace route, run
 > `bash install.sh --uninstall` first — and then check `~/.claude/settings.json` yourself,
 > because `--uninstall` matches on a `_karaoke` marker that Claude Code strips whenever it
@@ -82,12 +83,13 @@ for this user, not only in the project you happened to install from. That is a d
 separate step for that reason — read the dry run first, and `--uninstall` reverses it.
 Restart the session afterwards so the hooks load.
 
-**3. Without hooks at all.** The skill and the MCP server need no hook runtime — see the
-table below. Invoke `build_karaoke.py` directly, or run `mcp/server.py` and call `narrate`.
+**3. Without hooks at all.** The skill needs no hook runtime — see the table below. Invoke
+`build_karaoke.py` directly. The MCP server (a separate repo as of 2.5.0, see "MCP server"
+below) needs no hook runtime either.
 
 ## What runs automatically, and where
 
-| Surface | Skill (manual) | MCP server | `Stop` hook (every turn) |
+| Surface | Skill (manual) | MCP server (companion repo) | `Stop` hook (every turn) |
 |---|---|---|---|
 | Claude Code CLI | yes | yes | **yes** — full support |
 | Claude Cowork | yes | yes | partial — hooks run, but gaps have been reported |
@@ -114,12 +116,13 @@ synthetic TTS speech silently drops long spans. `SKILL.md` documents the measure
 
 ## Hooks
 
-`hooks/hooks.json` declares three, all in exec form (`command` + `args[]`, spawned directly
+`hooks/hooks.json` declares four, all in exec form (`command` + `args[]`, spawned directly
 rather than through a shell):
 
 | event | script | why |
 |---|---|---|
 | `SessionStart` | `scripts/version-guard.sh --report` | reports version drift; read-only, no network, always exits 0 |
+| `UserPromptSubmit` | `scripts/pending_narration.sh` | surfaces any narration `Stop` already built but nothing has delivered yet |
 | `PostModelSwitch` | `scripts/record_model.py` | records the live model so narration attribution cannot go stale |
 | `Stop` | `scripts/stop_hook.py` | narrates the finished turn; async, never blocks, always exits 0 |
 
@@ -172,11 +175,20 @@ See `skills/karaoke-narration/SKILL.md`'s "Narrating a real turn" section for th
 rules (one turn directory per turn, never a shared path; a new artifact URL per turn;
 one-word link labels).
 
+## MCP server
+
+As of 2.5.0, the MCP server lives in its own repo:
+[EMBLEM-NLP/karaoke-claude-narration-connector](https://github.com/EMBLEM-NLP/karaoke-claude-narration-connector).
+It exposes this package's pipeline as `narrate` / `verify_against_ground_truth` over stdio,
+http, or a tunneled hybrid — see that repo's own README for the transport matrix and
+`DEPLOY.md` for the claude.ai custom-connector route. It depends on this package (set
+`KARAOKE_CORE_ROOT` to a checkout of this repo, or check both out as siblings) rather than
+vendoring it, so the two stay in sync without duplicated code. **Not started automatically**
+by installing this plugin — it was never declared as a plugin component, only ever run by
+hand.
+
 ## Also in this package
 
-- `mcp/` — MCP server exposing the pipeline as `narrate` / `verify_against_ground_truth`.
-  **Not started automatically** by installing this package — see `mcp/README.md` for the
-  transport matrix and `DEPLOY.md` for the claude.ai custom-connector route.
 - `interop/` — conformance kit: a `timing.json` schema, a validator with a negative control,
   and a reader-portability checker.
 - `commands/karaoke.md` — the `/karaoke on|off|status` toggle.

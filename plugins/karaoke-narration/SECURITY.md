@@ -45,12 +45,15 @@ installing.
   present, nothing is stamped — which is the correct floor. A wrong model on a response is
   worse than no model.
 
-### 2. The MCP server (`mcp/server.py`)
+### 2. The MCP server
 
-**Not wired up automatically** — installing this plugin does not start or register it.
-It is a separate, manually-configured path for surfaces with no hook runtime (Claude
-Desktop, Cowork, claude.ai via a custom connector). See `mcp/README.md` for the transport
-matrix.
+As of 2.5.0, this lives in a separate repo,
+[karaoke-claude-narration-connector](https://github.com/EMBLEM-NLP/karaoke-claude-narration-connector)
+— it was never wired into this plugin's manifest (`claude plugin details` reported
+`MCP servers (0)` even when the files sat in this tree), so nothing about installing this
+plugin changes. It remains a separate, manually-configured path for surfaces with no hook
+runtime (Claude Desktop, Cowork, claude.ai via a custom connector). See that repo's
+`mcp/README.md` for the transport matrix.
 
 - **Takes no credentials.** `narrate()` is a pure function — text in, audio out. There is
   nothing in this server worth stealing and nothing it could leak into a transcript.
