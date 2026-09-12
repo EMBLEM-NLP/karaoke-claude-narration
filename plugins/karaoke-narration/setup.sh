@@ -24,11 +24,10 @@ set -uo pipefail
 MODE="${1:---dry-run}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Narration-only dependencies. The MCP server's requirements (mcp[cli], fastapi,
-# uvicorn) are deliberately NOT installed here - that is a separate, optional
-# component with its own install path in mcp/README.md, and installing the full
-# requirements.txt in one shot can hit a PyJWT pip/apt conflict that has nothing
-# to do with narration.
+# Narration-only dependencies - this is all requirements.txt carries as of
+# 2.5.0. The MCP server and its requirements (mcp[cli], fastapi, uvicorn) moved
+# to a separate repo, karaoke-claude-narration-connector, with its own install
+# path in that repo's mcp/README.md.
 PIP_PKGS="piper-tts faster-whisper numpy"
 APT_PKGS="ffmpeg"
 

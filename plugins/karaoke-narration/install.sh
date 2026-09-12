@@ -45,6 +45,11 @@ BLOCK=$(jq -n --arg root "$HERE" '{
               args: [($root + "/scripts/preflight.sh"), "--report"],
               timeout: 10, _karaoke: true }]
   }],
+  UserPromptSubmit: [{
+    hooks: [{ type: "command", command: "bash",
+              args: [($root + "/scripts/pending_narration.sh")],
+              timeout: 10, _karaoke: true }]
+  }],
   PostModelSwitch: [{
     hooks: [{ type: "command", command: "python3",
               args: [($root + "/scripts/record_model.py")],

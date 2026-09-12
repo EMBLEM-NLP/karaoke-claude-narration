@@ -16,13 +16,14 @@
 # SCOPE, ON PURPOSE
 # Only the narration path's own minimal dependencies are checked and
 # recommended here: piper-tts, faster-whisper, numpy, ffmpeg/ffprobe. The MCP
-# server's separate dependency set (mcp[cli], fastapi, uvicorn) is a different
-# install path entirely (see mcp/README.md) and is deliberately NOT checked or
-# recommended by this script - conflating the two is what produced a real
-# PyJWT pip/apt conflict during testing: installing the FULL requirements.txt
-# (narration deps + MCP server deps together) pulled in mcp[cli], which pulled
-# in a PyJWT version pip tried to uninstall over an apt-managed one. The
-# narration path alone never touches PyJWT.
+# server moved to a separate repo at 2.5.0 (karaoke-claude-narration-connector,
+# see that repo's mcp/README.md) with its own dependency set (mcp[cli],
+# fastapi, uvicorn), deliberately NOT checked or recommended by this script -
+# conflating the two, back when both lived in one requirements.txt, is what
+# produced a real PyJWT pip/apt conflict during testing: installing the FULL
+# file (narration deps + MCP server deps together) pulled in mcp[cli], which
+# pulled in a PyJWT version pip tried to uninstall over an apt-managed one.
+# The narration path alone never touches PyJWT.
 #
 # Modes:
 #   --report   human-readable summary; always exits 0 (safe as a SessionStart hook)
