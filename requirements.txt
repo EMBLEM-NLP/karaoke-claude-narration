@@ -1,7 +1,0 @@
-# Core narration pipeline only, as of 2.5.0. The MCP server's dependencies
-# (mcp[cli], fastapi, uvicorn) moved to the companion connector repo,
-# EMBLEM-NLP/karaoke-claude-narration-connector, along with mcp/ itself.
-piper-tts
-faster-whisper
-numpy
-tiktoken
