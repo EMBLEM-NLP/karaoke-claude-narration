@@ -11,7 +11,7 @@
       "name": "karaoke-narration",
       "source": "./plugins/karaoke-narration",
       "description": "Word-highlighted, tap-to-seek review player for narration scripts, built to close the artifact-visibility gap when triaging agent-generated content.",
-      "version": "2.4.1",
+      "version": "2.5.0",
       "author": {
         "name": "EMBLEM-NLP",
         "url": "https://github.com/EMBLEM-NLP"

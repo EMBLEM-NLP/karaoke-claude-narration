@@ -25,6 +25,20 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/pending_narration.sh"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostModelSwitch": [
       {
         "hooks": [
@@ -46,7 +60,7 @@
             "type": "command",
             "command": "python3",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/stop_hook_entry.py"
+              "${CLAUDE_PLUGIN_ROOT}/scripts/stop_hook.py"
             ],
             "async": true,
             "timeout": 600,
