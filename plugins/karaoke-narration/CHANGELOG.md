@@ -46,10 +46,18 @@ lines by appending incident narratives that duplicated two files already in `ref
   `plugins/karaoke-narration/` — the actual path `.claude-plugin/marketplace.json`'s own
   `source` field points to, confirmed by that manifest's `"source": "./plugins/karaoke-narration"`
   and by a repo file search resolving `mcp/server.py` to `plugins/karaoke-narration/mcp/server.py`.
-  The repo root turned out to carry a stale, orphaned duplicate of this package predating the
-  marketplace restructuring — never read by the install path, matching the same pattern as
-  `pending_narration.sh` above. Redone here at the correct path; the root duplicate is being
-  removed in a follow-up commit.
+  Redone here at the correct path; the six mistaken root-level commits were then removed
+  entirely (fifteen files across `hooks/`, `scripts/`, `skills/`, `.claude-plugin/plugin.json`,
+  and the top-level manifests/docs).
+- **This note originally misdiagnosed that root content as "a stale, orphaned duplicate
+  predating the marketplace restructuring."** Checked directly before deleting it: the
+  root's `hooks/` held only `hooks.json`, `scripts/` held only `preflight.sh`, and
+  `skills/karaoke-narration/` held only `SKILL.md` plus the three reference files added
+  in this same release — a sparse set matching exactly what my own four mistaken
+  `push_files` calls had written, not a historical mirror of the package. There was no
+  pre-existing duplicate to find; the root copy was created by this session, this release,
+  by omitting the `plugins/karaoke-narration/` prefix on every push. Correcting the record
+  rather than leaving a wrong cause attached to a right fix.
 
 ## [2.4.1] - 2026-09-11 — correct the published repository identity
 
@@ -335,7 +343,7 @@ distinct ways.
   alongside the reply and no ground truth existed. A gate with nothing to compare against
   reports nothing, which is indistinguishable from passing if you do not read it.
 - **A shared output path destroys history.** Artifact publishing is keyed to the path, so
-  republishing one "latest" path means every turn overwrites the last. A 34-word reply
+  republishing one "latest" path means each turn overwrites the last. A 34-word reply
   destroyed a 369-word narration; only the final turn survived at that URL.
 - **A multi-word link label fails the verbatim gate.** `clean_token` maps one source token
   to one display token, so `[latest narration](url)` renders as two tokens against one
@@ -587,7 +595,7 @@ overwritten.
   matched reality" but means "nothing was compared". Now tri-state:
   `None` = NOT CHECKED, excluded from the overall pass computation (rather
   than hard-failing legitimate builds, since on claude.ai ground truth cannot
-  exist until the turn has ended), and printed as `NOT CHECKED` with an
+  exist until the turn has ended), and printed as "NOT CHECKED" with an
   explanation. Verified the FAIL path still fails after the change.
 
 ### Contract note (judgment call, flagged rather than buried)
