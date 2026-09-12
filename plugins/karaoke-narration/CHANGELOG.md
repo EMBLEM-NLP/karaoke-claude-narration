@@ -3,6 +3,54 @@
 All notable changes to this standalone package are documented here.
 Format follows Keep a Changelog; versioning follows SemVer 2.0.0.
 
+## [2.5.0] - 2026-09-12 — wire up delivery, split the MCP connector out, trim SKILL.md
+
+Prompted by a repo-structure review: `pending_narration.sh` existed, fully written and
+correctly formed, but was never registered anywhere; the MCP server was shipped in this
+repo without being declared as a plugin component at all; and `SKILL.md` had grown to 363
+lines by appending incident narratives that duplicated two files already in `references/`.
+
+### Added
+- `hooks/hooks.json` and `install.sh`'s settings-based fallback both now register
+  `scripts/pending_narration.sh` as a `UserPromptSubmit` hook. It was already a complete,
+  correctly-formed hook (verified: emits `hookSpecificOutput.additionalContext` per the
+  documented contract) — it solves the exact delivery gap a remote/headless session hits
+  when nothing forwards the async `Stop` hook's output, and this session hit that gap and
+  worked around it by hand before finding the script already existed, unwired.
+- `skills/karaoke-narration/references/ios-audio-delivery.md`,
+  `references/model-attribution.md`, `references/tool-call-quotation.md` — extracted
+  verbatim from `SKILL.md`'s incident-narrative sections, added to `references/index.md`.
+
+### Changed
+- `mcp/server.py` no longer assumes it lives inside the same repo as
+  `skills/karaoke-narration/scripts/`. It now resolves the core package via
+  `KARAOKE_CORE_ROOT`, falling back to a sibling-directory convention for local
+  development, and fails loudly with a clear message if neither locates
+  `build_karaoke.py`. Required by the split below.
+- `SKILL.md` trimmed 363 → ~260 lines: the "Delivery and iOS", "Model attribution",
+  "Token estimate", and "Step lines are quotations" sections are now short pointers into
+  `references/`, two of which (`sandbox-audio-constraints.md`, `token-accuracy.md`) already
+  existed and were simply never cross-linked from `SKILL.md`.
+- `README.md` hook-count references updated 3 → 4 throughout.
+
+### Removed
+- `mcp/`, `DEPLOY.md`, `DEPLOY_NOTES.md`, `Dockerfile` — moved to a new companion repo,
+  `EMBLEM-NLP/karaoke-claude-narration-connector`. `claude plugin details` reported
+  `MCP servers (0)` even before this change: the connector was never a declared plugin
+  component, just loose files sharing a repo with one. A Claude Code plugin's marketplace
+  footprint shouldn't carry a separate product's deployment surface (auth server, Docker,
+  tunnel docs) for a component it doesn't actually expose.
+
+### Corrected
+- This entry originally landed at the repo root in four commits, not under
+  `plugins/karaoke-narration/` — the actual path `.claude-plugin/marketplace.json`'s own
+  `source` field points to, confirmed by that manifest's `"source": "./plugins/karaoke-narration"`
+  and by a repo file search resolving `mcp/server.py` to `plugins/karaoke-narration/mcp/server.py`.
+  The repo root turned out to carry a stale, orphaned duplicate of this package predating the
+  marketplace restructuring — never read by the install path, matching the same pattern as
+  `pending_narration.sh` above. Redone here at the correct path; the root duplicate is being
+  removed in a follow-up commit.
+
 ## [2.4.1] - 2026-09-11 — correct the published repository identity
 
 This is a documentation and manifest correction only. The marketplace repository was created
