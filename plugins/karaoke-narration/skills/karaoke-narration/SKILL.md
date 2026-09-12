@@ -4,7 +4,7 @@ description: Builds a word-highlighted, tap-to-seek "karaoke" review player for 
 compatibility: Requires piper (piper-tts), faster-whisper, ffmpeg/ffprobe, python3 with numpy. Install with `pip install --break-system-packages piper-tts faster-whisper numpy`. The player.html is a static file — usable anywhere, including Claude Desktop.
 allowed-tools: Bash(piper:*) Bash(ffmpeg:*) Bash(ffprobe:*) Bash(python3:*) Read Write
 metadata:
-  version: 2.4.1
+  version: 2.5.0
   author: emblem-nlp
   plugin: karaoke-narration
 ---
@@ -119,8 +119,29 @@ text, exposed as `last_assistant_message`.
 If the plugin hook does not fire, run `bash install.sh --apply` from the package
 root for the settings-based route - plugin `Stop` hooks specifically have been
 reported not firing on some versions while the identical script worked from
-settings. It writes the same three hooks with this checkout's absolute paths
+settings. It writes the same four hooks with this checkout's absolute paths
 already substituted, and `--uninstall` reverses it.
+
+### The other UserPromptSubmit: delivering what Stop already built (2.5.0)
+
+The section above explains why *automatic narration* cannot use `UserPromptSubmit` -
+the reply doesn't exist yet when it fires. That is a different question from
+*delivery*. `scripts/pending_narration.sh` uses `UserPromptSubmit` for exactly
+that: not to narrate, but to notice, at the start of the next turn, that `Stop`
+already built a player nobody has seen yet.
+
+This matters in a session with no listener for the files `stop_hook.py` writes -
+a remote/headless container where nothing plays audio or forwards HTML on its
+own. Left alone, narration is built correctly and then sits on disk forever.
+`pending_narration.sh` scans `~/.karaoke-narration/turns/*/` each turn for a
+`response_standalone.html` with no sibling `.sent` marker, and if it finds one,
+emits `hookSpecificOutput.additionalContext` naming the file and instructing
+Claude to send it via `SendUserFile` and then `touch` the `.sent` marker itself.
+The script never creates that marker - only Claude does, after confirming the
+send actually happened, since the script has no way to know that.
+
+Fast (a local directory scan, no `async`) and silent when there is nothing
+pending (exit 0, no output) - most turns pay nothing for it.
 
 ## Narrating a real turn (1.30.0, rule 4 and the audit added in 2.2.0)
 
@@ -168,7 +189,7 @@ python3 scripts/audit_published.py turns/007
 ```
 
 Exit 0 published-matches-said, 1 a real divergence with the differing spans printed, 2 could
-not check (no Stop-hook record — hook off, or the reply was under `KARAOKE_MIN_CHARS`). Exit
+not check (no Stop-hook record - hook off, or the reply was under `KARAOKE_MIN_CHARS`). Exit
 2 is not a pass. It reuses `build_karaoke.py`'s own comparison rather than restating it, so a
 fenced code block does not false-fail the way a raw diff would.
 
@@ -186,153 +207,28 @@ Note that `stop_hook.py` never had this problem: it narrates `last_assistant_mes
 is the actual reply, so it is verbatim by construction. Rule 1 is about using the tool by
 hand — which is the only mode available where the hook cannot be registered.
 
-## Delivery and iOS: four rules learned on a real phone (1.29.0)
+## Delivery and iOS
 
-Each of these cost a wrong diagnosis before it was found. They are stated as rules
-because every one was violated by a version that passed its own checks.
+Four rules learned shipping a working player to a real phone — file-attachment
+delivery, audio-context timing, WebKit's non-standard `'interrupted'` state, and
+why a desktop Chromium pass proves nothing for this class of bug — are in
+[references/ios-audio-delivery.md](references/ios-audio-delivery.md). The
+underlying `data:`/`blob:` sandbox failure they build on is in
+[references/sandbox-audio-constraints.md](references/sandbox-audio-constraints.md).
 
-**1. Deliver as an Artifact, never as a file attachment.** An attachment opens in a
-static preview that does not execute JavaScript. This player is entirely
-JavaScript - transcript, decode, playback, highlighting - so attached it shows only
-its own boot markup, at any size, forever. Pack with `--artifact` and publish with
-the Artifact tool. The static boot text now reads `loading player…`, distinct from
-every string the script can write, so "script never ran" is visible on screen
-instead of being mistaken for "still decoding".
+## Model attribution and token estimates
 
-```bash
-python3 scripts/pack_standalone.py out/r.mp3 out/r.timing.json --artifact \
-  --title "Something specific to this turn" -o out/r_artifact.html
-```
-
-**2. Do no audio work before a user gesture.** Established on a real iPhone: the
-1.28.0 build, which constructed the `AudioContext` and called `decodeAudioData` at
-page load, sat at its boot status with playback never enabled; the 1.29.0 build,
-which defers every piece of audio work to the first tap, plays. Because the play
-button was enabled only inside the decode's success path, any failure before that
-point left it permanently dead. NOT established: why the load-time path failed. The
-fix moves the base64 decode, the byte loop and `decodeAudioData` behind the tap
-together, so it cures several rival causes at once and cannot tell them apart. An
-earlier revision of this section stated as fact that WebKit withholds
-`decodeAudioData`'s callbacks on a non-running context. That is unproven - the
-eager-decode-then-unlock pattern used by howler.js and Tone.js works on iOS, which
-cuts against it - and is withdrawn here rather than edited away. The template
-renders the transcript at load, leaves the play button enabled, and on the first
-tap - synchronously, before any promise hop - resumes the context, plays a one-frame
-silent buffer (the standard WebKit audio-session unlock), and only then decodes.
-
-**3. Test for `'running'`, never for `'suspended'`.** WebKit has a non-standard
-`'interrupted'` state (phone call, Siri, backgrounding). A `=== 'suspended'` check
-skips the resume in that state and reintroduces the identical hang. Both resume sites
-now test `state !== 'running'`, a `statechange` handler tears down and asks for a tap,
-and a closed context is rebuilt rather than resumed.
-
-**4. A pass in desktop Chromium is not evidence for this class of bug.** Every build
-that hung on the phone passed headless Chromium. `interop/check_reader_live.py` runs
-the page in Chromium with Web Audio patched to two hostile behaviours - a decode that
-never settles, and a context reporting `'interrupted'` until resumed - and requires
-the transcript and an enabled play button to survive both. These are robustness
-properties the reader must have whatever the true iOS mechanism is; they are not a
-claim about how WebKit decodes. The pre-1.29.0 template fails both; that failure is
-the check's negative control. The discriminating experiment nobody has yet run: on
-the 1.28.0 artifact build, wait past the 20 s watchdog - a status change proves the
-event loop was alive and decode genuinely never settled; no change puts the failure
-upstream of decode. Then load the same file first-party in mobile Safari versus
-inside the artifact frame, on the same device.
-
-**On the model byline:** the trap this file already documents - a hand-typed model name
-carried forward while the real model changed - was reproduced verbatim during 1.29.0's
-own development, across a session that ran three different models. Pass `--model` only
-with a value verified at that moment; the default of no attribution is the honest one.
-
-## The second landmine: you cannot play audio from a URL in the artifact sandbox
-
-The artifact preview blocks media from **both `data:` and `blob:` URLs** — each
-fails with `MEDIA_ERR_SRC_NOT_SUPPORTED` (media error code 4), because both are
-URL sources governed by the CSP `media-src` directive. Embedding the audio as a
-base64 `data:` URI is therefore *not* sufficient on its own, and converting it to
-a Blob URL fails the same way.
-
-`player_embed_template.html` avoids URLs entirely: it base64-decodes the audio to
-an `ArrayBuffer` in JS and hands that to **`AudioContext.decodeAudioData()`**.
-No resource is fetched, so `media-src` never applies. This also dodges iOS
-Safari's long-standing unreliability with `blob:` on media elements.
-
-The trade-off is that an `AudioBufferSourceNode` is one-shot — it cannot be
-paused, restarted, or repositioned. Play/pause/seek are therefore hand-managed by
-tracking `startCtxTime` / `startOffset` against `audioCtx.currentTime` and
-creating a fresh source node on every seek. Playback rate is folded into that
-time math, so changing rate mid-play re-seeks to the correct position.
-
-On iOS the `AudioContext` starts suspended; `resume()` must be called from a user
-gesture. Every path that starts playback here originates in a click, so this is
-handled — but preserve that property if you add new entry points.
-
-**Also: don't rely on `<body>` for the background.** The host stylesheet
-overrides it in some preview contexts, which renders the page white while only
-explicitly-painted elements (like a fixed footer) stay dark. All styling hangs
-off an `#app` wrapper with its own background for this reason.
-
-## Model attribution: name is checkable, mode is not
-
-Model **name and ID** can be verified against Claude's own system prompt at build
-time ("This iteration of Claude is Claude Sonnet 5" is stated there directly) -
-there is no excuse for a stale or hardcoded value. This failed in practice: five
-consecutive builds shipped "Claude Opus 5" carried forward from one old
-screenshot, never rechecked, while the actual model producing later turns had
-changed. Re-derive it every build; never reuse a prior turn's value.
-
-**Mode** (Max, High, whatever effort level is selected) is different in kind, not
-just in reliability. It is a UI setting with no equivalent in the model's own
-context - there is no signal to check, ever, from any turn. Every mode value
-shipped so far was inferred from a screenshot of the compose bar, which is
-observation of the person's screen, not self-knowledge. Treat it exactly like
-`--tokens-in`: supplied and exact, or blank. Never inferred, never carried
-forward.
-
-## Token estimate: likely biased low, not just imprecise
-
-Anthropic's newer tokenizer (Opus 5, Sonnet 5, and later) produces roughly 30%
-*more* tokens than earlier models for the same text. The `o200k_base` estimate
-here is OpenAI's tokenizer against Anthropic content already; on current-generation
-models it is probably undercounting on top of that, not merely off in an
-unknown direction. Worth stating in the UI as a real bias, not just noise.
-
-On claude.ai (the consumer product, not the API): there is no per-message token
-count exposed anywhere in the product. The only usage visibility is an aggregate
-weekly percentage. `--tokens-in`/`--tokens-out` are only fillable at all when the
-person is calling the API directly and has the response object in hand.
+Why model name/ID must be re-derived every build while attribution mode can never
+be inferred: [references/model-attribution.md](references/model-attribution.md).
+Why the token estimate is a real, directional bias rather than generic
+imprecision, and why input tokens are unrecoverable at all:
+[references/token-accuracy.md](references/token-accuracy.md).
 
 ## Step lines are quotations, not summaries
 
-Blockquote step lines must be **copied character-for-character from the actual
-tool-call description strings**, one line per call, in call order. They are
-quotations, not a summary written afterwards.
-
-This has failed in practice, and the failure is invisible without side-by-side
-comparison: a five-step turn shipped as four, with two lines silently truncated
-("omitting fields that weren't supplied" lost "rather than inventing defaults")
-and the final two calls merged into one invented line. Everything still read
-plausibly, and `display_text_is_verbatim` still passed - because that gate only
-proves the HTML matches the input file, never that the input file matches
-reality.
-
-**Every step group, not just the first.** A turn interleaves several groups
-between paragraphs, and each belongs at its own position - the code already
-supports multiple blockquote blocks, so collapsing them into one block at the top
-is a choice, and the wrong one. Groups that occur after the build are still
-knowable: their description strings are decided before the calls are made, so
-write them into the file first and then make the calls with exactly those
-strings. `present_files` has no description field; the app labels it
-"Presented N files", so use that.
-
-Tool *results* are not captured at all - only descriptions. The app can expand any
-step to reveal its output, and that output is where the actual evidence lives.
-This is a known, unclosed gap.
-
-There is no automated check for this. The tool-call descriptions are not written
-to disk, so nothing can diff them. The only safeguard is to copy each one rather
-than recalling it, with the same discipline the response prose requires. If a
-step line is being typed from memory, it is already wrong.
+Blockquote step lines describing tool calls must be copied character-for-character
+from the actual description strings, not recalled afterward — full incident and
+rules in [references/tool-call-quotation.md](references/tool-call-quotation.md).
 
 ## Known-good behavior, verified in a smoke test
 
