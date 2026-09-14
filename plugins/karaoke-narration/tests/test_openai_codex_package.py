@@ -79,6 +79,69 @@ def test_narrate_text_fails_before_writing_when_preflight_fails(tmp_path, monkey
     assert not (tmp_path / "narrations").exists()
 
 
+def test_narrate_chat_response_returns_packed_player(monkeypatch):
+    path = ROOT / "mcp" / "openai_server.py"
+    spec = importlib.util.spec_from_file_location("openai_server_chat_response", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    calls = {}
+
+    def fake_narrate_text(text, title, label, model=None, model_id=None, mode=None):
+        calls["narrate_text"] = {
+            "text": text,
+            "title": title,
+            "label": label,
+            "model": model,
+            "model_id": model_id,
+            "mode": mode,
+        }
+        return {
+            "ok": True,
+            "state": "ready",
+            "narration_id": "abc123abc123abc1",
+            "word_count": 5,
+        }
+
+    def fake_get_player(narration_id):
+        calls["get_player"] = narration_id
+        return {
+            "ok": True,
+            "narration_id": narration_id,
+            "content_type": "text/html",
+            "html": (
+                '<main><div id="transcript"><div class="blk p"><div>'
+                "Exact chat response."
+                "</div></div></div></main><script>render()</script>"
+            ),
+        }
+
+    monkeypatch.setattr(module, "narrate_text", fake_narrate_text)
+    monkeypatch.setattr(module, "get_player", fake_get_player)
+
+    result = module.narrate_chat_response(
+        "Exact chat response.",
+        title="Current response",
+        model="gpt-test",
+        model_id="model-id",
+        mode="high",
+    )
+
+    assert calls["narrate_text"] == {
+        "text": "Exact chat response.",
+        "title": "Current response",
+        "label": "Chat response",
+        "model": "gpt-test",
+        "model_id": "model-id",
+        "mode": "high",
+    }
+    assert calls["get_player"] == "abc123abc123abc1"
+    assert result["ok"] is True
+    assert result["content_type"] == "text/html"
+    assert "Exact chat response." in result["html"].split("<script>", 1)[0]
+    assert "__STATIC_TRANSCRIPT_FALLBACK__" not in result["html"]
+
+
 def test_packed_player_contains_static_transcript_fallback(tmp_path):
     mp3 = tmp_path / "turn.mp3"
     mp3.write_bytes(b"not a real mp3; packer only embeds bytes")
@@ -152,3 +215,11 @@ def test_codex_skill_states_surface_boundary():
     assert "Never say a response was narrated unless" in skill
     assert "ChatGPT web/mobile" in skill
     assert "Stop" in skill
+
+
+def test_codex_skill_prefers_one_call_chat_response_tool():
+    skill = (ROOT / "skills" / "karaoke-narration-codex" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "call `narrate_chat_response` with the exact response text" in skill
+    assert "Never open or share `player_embed_template.html`" in skill
