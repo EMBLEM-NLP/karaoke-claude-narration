@@ -301,6 +301,31 @@ def get_player(narration_id: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def narrate_chat_response(
+    text: str,
+    title: str = "Chat response",
+    model: str | None = None,
+    model_id: str | None = None,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    """Narrate one chat response and return its packed player HTML directly."""
+    status = narrate_text(
+        text,
+        title=title,
+        label="Chat response",
+        model=model,
+        model_id=model_id,
+        mode=mode,
+    )
+    if not status.get("ok"):
+        return status
+
+    player = get_player(status["narration_id"])
+    if not player.get("ok"):
+        return {**status, **player}
+    return {**status, **player}
+
+
 def verify_against_ground_truth(narration_id: str, ground_truth: str) -> dict[str, Any]:
     """Compare stored source text with supplied ground truth."""
     try:
@@ -327,6 +352,7 @@ def delete_narration(narration_id: str) -> dict[str, Any]:
 
 def register_tools(mcp: Any) -> None:
     mcp.tool()(preflight)
+    mcp.tool()(narrate_chat_response)
     mcp.tool()(narrate_text)
     mcp.tool()(get_status)
     mcp.tool()(get_player)
