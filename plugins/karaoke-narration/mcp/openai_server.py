@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from secrets import token_urlsafe
@@ -89,11 +90,13 @@ def _read_status(narration_id: str) -> dict[str, Any]:
 
 
 def _check_module(module: str) -> bool:
-    return subprocess.run(
-        [sys.executable, "-c", f"import {module}"],
-        capture_output=True,
-        text=True,
-    ).returncode == 0
+    with tempfile.TemporaryDirectory(prefix="karaoke-preflight-") as cwd:
+        return subprocess.run(
+            [sys.executable, "-c", f"import {module}"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        ).returncode == 0
 
 
 def preflight() -> dict[str, Any]:
@@ -149,6 +152,14 @@ def narrate_text(
             "error": "text_too_large",
             "max_chars": MAX_TEXT_CHARS,
             "actual_chars": len(text),
+        }
+
+    readiness = preflight()
+    if not readiness["ok"]:
+        return {
+            "ok": False,
+            "error": "preflight_failed",
+            "preflight": readiness,
         }
 
     narration_id = token_urlsafe(18)
