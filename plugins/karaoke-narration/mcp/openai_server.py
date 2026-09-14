@@ -151,6 +151,14 @@ def narrate_text(
             "actual_chars": len(text),
         }
 
+    readiness = preflight()
+    if not readiness["ok"]:
+        return {
+            "ok": False,
+            "error": "preflight_failed",
+            "preflight": readiness,
+        }
+
     narration_id = token_urlsafe(18)
     out_dir = DATA / "narrations" / narration_id
     out_dir.mkdir(parents=True, exist_ok=False)
