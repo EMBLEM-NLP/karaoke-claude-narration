@@ -37,6 +37,60 @@ def test_stop_hook_uses_json_safe_entrypoint():
     assert stop_hooks[0]["async"] is True
 
 
+def load_stop_hook_module(monkeypatch, tmp_path, **env):
+    monkeypatch.setenv("KARAOKE_STATE_DIR", str(tmp_path))
+    for name in ("KARAOKE_EVERY_TURN", "KARAOKE_ALLOW_TRANSCRIPT_FALLBACK", "KARAOKE_MIN_CHARS"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    path = ROOT / "scripts" / "stop_hook.py"
+    spec = importlib.util.spec_from_file_location(f"stop_hook_{len(sys.modules)}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_stop_hook_defaults_to_every_non_empty_turn(tmp_path, monkeypatch):
+    module = load_stop_hook_module(monkeypatch, tmp_path)
+
+    assert module.worth_narrating("ok") == (True, "")
+    assert module.worth_narrating("   ")[0] is False
+
+
+def test_stop_hook_legacy_filter_is_explicit_opt_out(tmp_path, monkeypatch):
+    module = load_stop_hook_module(
+        monkeypatch,
+        tmp_path,
+        KARAOKE_EVERY_TURN="0",
+        KARAOKE_MIN_CHARS="10",
+    )
+
+    assert module.worth_narrating("ok") == (False, "below 10 chars")
+    assert module.worth_narrating("This is definitely long enough.") == (True, "")
+
+
+def test_stop_hook_requires_payload_text_unless_fallback_is_explicit(tmp_path, monkeypatch):
+    module = load_stop_hook_module(monkeypatch, tmp_path)
+    opt_in = load_stop_hook_module(
+        monkeypatch,
+        tmp_path,
+        KARAOKE_ALLOW_TRANSCRIPT_FALLBACK="1",
+    )
+
+    assert module.ALLOW_TRANSCRIPT_FALLBACK is False
+    assert opt_in.ALLOW_TRANSCRIPT_FALLBACK is True
+
+
+def test_stop_hook_records_verbatim_source_audit_markers():
+    src = (ROOT / "scripts" / "stop_hook.py").read_text(encoding="utf-8")
+
+    assert '"source_manifest.json"' in src
+    assert '"sha256"' in src
+    assert '"--verify-against", str(turn_md)' in src
+    assert "KARAOKE_ALLOW_TRANSCRIPT_FALLBACK" in src
+
+
 def test_openai_adapter_imports_without_mcp_dependency():
     path = ROOT / "mcp" / "openai_server.py"
     spec = importlib.util.spec_from_file_location("openai_server", path)

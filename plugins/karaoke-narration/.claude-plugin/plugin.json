@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "karaoke-narration",
   "displayName": "Karaoke Narration",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Word-highlighted, tap-to-seek review player for narration scripts, built to close the artifact-visibility gap when triaging agent-generated content.",
   "author": {
     "name": "emblem-nlp",

@@ -3,7 +3,7 @@
 Word-highlighted, tap-to-seek review player for narration scripts — and, on Claude Code,
 automatic narration of every assistant turn.
 
-Marketplace package, version `2.5.0`. The GitHub repository is named
+Marketplace package, version `2.5.1`. The GitHub repository is named
 `karaoke-claude-narration`; the plugin is still named `karaoke-narration`, and the
 marketplace is still named `emblem-nlp`.
 
@@ -102,7 +102,9 @@ The `Stop` hook is **inert until you enable it**:
 mkdir -p ~/.karaoke-narration && touch ~/.karaoke-narration/enabled   # or: /karaoke on
 ```
 
-Once on, it narrates every assistant turn over ~220 characters that isn't mostly code. See
+Once on, it narrates every non-empty assistant turn from `last_assistant_message`. Set
+`KARAOKE_EVERY_TURN=0` to restore the older threshold filter (`KARAOKE_MIN_CHARS`, default
+220, plus mostly-code skipping). See
 `SECURITY.md` for exactly what it does and doesn't touch, and
 `skills/karaoke-narration/SKILL.md` for the pipeline and its documented failure modes.
 
