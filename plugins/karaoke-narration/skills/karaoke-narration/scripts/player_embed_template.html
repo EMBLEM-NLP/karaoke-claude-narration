@@ -160,6 +160,10 @@
   .controls{display:flex; align-items:center; gap:10px;}
   #time{flex:none;}
   #followBtn{margin-left:auto;}
+  .fallback-audio{margin:0 0 12px;}
+  .fallback-audio audio{width:100%; display:block;}
+  .fallback-audio .hint{font-family:var(--sans); font-size:11px; color:var(--text-dim); margin:0 0 6px;}
+  html.js .fallback-audio{display:none;}
   /* Round clay button, echoing the app's send control */
   #playBtn{
     background:var(--accent); border:none; color:#fff; border-radius:50%;
@@ -198,6 +202,10 @@
 
 <footer>
   <div class="bar-wrap">
+    <div class="fallback-audio">
+      <div class="hint">Fallback audio controls</div>
+      <audio id="fallbackAudio" controls preload="metadata" src="__AUDIO_BASE64_DATA_URI__"></audio>
+    </div>
     <div class="seekwrap">
       <input type="range" id="seek" min="0" max="100" value="0" step="0.01" disabled>
       <div id="markers"></div>
@@ -225,7 +233,11 @@
 
 </div>
 <script>
-/* Embedded by pack_standalone.py. AUDIO is raw base64 (no data: prefix).
+document.documentElement.classList.add('js');
+
+/* Embedded by pack_standalone.py. AUDIO is a data: URL on the fallback audio
+   element. The Web Audio player reads that same attribute when JavaScript runs,
+   so the MP3 is not duplicated in the HTML.
 
    WHY WEB AUDIO INSTEAD OF <audio src="...">:
    The artifact preview sandbox blocks media loaded from both `data:` and
@@ -239,11 +251,12 @@
    The file-picker ("load a different pair") was removed from this standalone
    template: the audio and timing are already embedded, so there is nothing for
    it to load. It remains in the multi-file player.html, where it is the point. */
-const EMBEDDED_AUDIO_B64 = "__AUDIO_BASE64_DATA_URI__";
 const EMBEDDED_TIMING = __TIMING_JSON_INLINE__;
 const EMBEDDED_LABEL = "__SOURCE_LABEL__";
 
 const transcript = document.getElementById('transcript');
+const fallbackAudio = document.getElementById('fallbackAudio');
+const EMBEDDED_AUDIO_B64 = fallbackAudio ? fallbackAudio.getAttribute('src') || '' : '';
 const seek = document.getElementById('seek');
 const playBtn = document.getElementById('playBtn');
 const timeEl = document.getElementById('time');
