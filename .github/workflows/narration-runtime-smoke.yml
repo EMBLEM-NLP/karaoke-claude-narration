@@ -1,0 +1,74 @@
+name: Narration Runtime Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Generate narration bundle and packed player
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: plugins/karaoke-narration
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system audio tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ffmpeg
+
+      - name: Install Python runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "mcp[cli]==1.29.0"
+
+      - name: Assert preflight passes
+        run: |
+          python - <<'PY'
+          from mcp.openai_server import preflight
+
+          result = preflight()
+          assert result["ok"], result
+          print(result)
+          PY
+
+      - name: Generate narration and verify packed player delivery
+        env:
+          KARAOKE_PLUGIN_DATA: ${{ runner.temp }}/karaoke-narration
+        run: |
+          python - <<'PY'
+          from mcp.openai_server import get_player, narrate_text
+
+          result = narrate_text(
+              "This is a short end to end narration smoke test for Codex and ChatGPT player delivery.",
+              title="Runtime smoke test",
+          )
+          assert result["ok"], result
+          assert result["player_available"], result
+
+          player = get_player(result["narration_id"])
+          assert player["ok"], player
+          assert player["content_type"] == "text/html"
+          assert "/tmp/" not in player["html"]
+          assert "file://" not in player["html"]
+          assert "http://" not in player["html"]
+          assert "https://" not in player["html"]
+          assert "AudioContext" in player["html"]
+          assert "This is a short end to end narration smoke test" in player["html"]
+          print({
+              "narration_id": result["narration_id"],
+              "duration_s": result.get("duration_s"),
+              "word_count": result.get("word_count"),
+              "html_chars": len(player["html"]),
+          })
+          PY
