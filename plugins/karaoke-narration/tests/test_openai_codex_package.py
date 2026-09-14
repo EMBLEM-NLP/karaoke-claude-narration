@@ -205,6 +205,7 @@ def test_packed_player_contains_static_transcript_fallback(tmp_path):
     before_script = html.split("<script>", 1)[0]
     assert '<div id="transcript"><div class="blk p"><div>Hello chat response.' in html
     assert text in before_script
+    assert '<audio id="fallbackAudio" controls preload="metadata" src="data:audio/mpeg;base64,' in html
     assert "__STATIC_TRANSCRIPT_FALLBACK__" not in html
 
 
