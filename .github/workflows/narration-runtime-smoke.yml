@@ -56,6 +56,96 @@ jobs:
           print(result)
           PY
 
+
+      - name: Verify Stop-hook entrypoint lifecycle
+        env:
+          KARAOKE_STATE_DIR: ${{ runner.temp }}/karaoke-hook-state
+          KARAOKE_ALWAYS: "1"
+          KARAOKE_MIN_CHARS: "120"
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          entry = Path("scripts/stop_hook_entry.py")
+          state = Path(os.environ["KARAOKE_STATE_DIR"])
+          env = os.environ.copy()
+
+          def invoke(payload):
+              proc = subprocess.run(
+                  [sys.executable, str(entry)],
+                  input=json.dumps(payload),
+                  capture_output=True,
+                  text=True,
+                  timeout=900,
+                  env=env,
+              )
+              assert proc.returncode == 0, {
+                  "returncode": proc.returncode,
+                  "stdout": proc.stdout,
+                  "stderr": proc.stderr[-1000:],
+              }
+              assert json.loads(proc.stdout) == {
+                  "continue": True,
+                  "suppressOutput": True,
+              }, proc.stdout
+
+          short_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": False,
+              "last_assistant_message": "ok",
+          }
+          invoke(short_payload)
+          assert not (state / "turns").exists(), "short skipped response should not create turns"
+
+          reentrant_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": True,
+              "last_assistant_message": (
+                  "This text is long enough to narrate, but the reentrancy flag means "
+                  "the hook must return immediately and avoid creating a continuation loop."
+              ),
+          }
+          invoke(reentrant_payload)
+          assert not (state / "turns").exists(), "reentrant payload should not create turns"
+
+          narratable_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": False,
+              "last_assistant_message": (
+                  "Stop hook smoke test. This response is deliberately long enough to pass "
+                  "the narration threshold. It verifies that the Codex JSON wrapper stays "
+                  "non blocking while the hook creates audio, timing, standalone HTML, and "
+                  "artifact HTML for a real assistant turn."
+              ),
+          }
+          invoke(narratable_payload)
+
+          turns = sorted((state / "turns").glob("hooksmoke-*"))
+          assert len(turns) == 1, [str(p) for p in turns]
+          turn = turns[0]
+          expected = [
+              turn / "turn.md",
+              turn / "response.mp3",
+              turn / "response.timing.json",
+              turn / "response_standalone.html",
+              turn / "response_artifact.html",
+          ]
+          missing = [str(path) for path in expected if not path.exists()]
+          assert not missing, missing
+          assert (turn / "response.mp3").stat().st_size > 44
+          assert "AudioContext" in (turn / "response_artifact.html").read_text(encoding="utf-8")
+
+          print({
+              "turn": turn.name,
+              "mp3_bytes": (turn / "response.mp3").stat().st_size,
+              "artifact_html_chars": len((turn / "response_artifact.html").read_text(encoding="utf-8")),
+          })
+          PY
+
       - name: Generate narration and verify packed player delivery
         env:
           KARAOKE_PLUGIN_DATA: ${{ runner.temp }}/karaoke-narration
