@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -75,6 +77,72 @@ def test_narrate_text_fails_before_writing_when_preflight_fails(tmp_path, monkey
         "preflight": missing,
     }
     assert not (tmp_path / "narrations").exists()
+
+
+def test_packed_player_contains_static_transcript_fallback(tmp_path):
+    mp3 = tmp_path / "turn.mp3"
+    mp3.write_bytes(b"not a real mp3; packer only embeds bytes")
+    timing = tmp_path / "turn.timing.json"
+    text = "Hello chat response. This must be visible before JavaScript runs."
+    timing.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "source_text": text,
+                "duration": 1.0,
+                "words": [
+                    {"w": "Hello", "start": 0.0, "end": 0.2},
+                    {"w": "chat", "start": 0.2, "end": 0.4},
+                    {"w": "response.", "start": 0.4, "end": 0.6},
+                ],
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "level": 0,
+                        "turn": 0,
+                        "narrated": True,
+                        "text": text,
+                        "sentences": [
+                            {
+                                "i": 0,
+                                "text": text,
+                                "start": 0.0,
+                                "end": 1.0,
+                                "words": [
+                                    {"w": "Hello", "start": 0.0, "end": 0.2},
+                                    {"w": "chat", "start": 0.2, "end": 0.4},
+                                    {"w": "response.", "start": 0.4, "end": 0.6},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "player.html"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "skills" / "karaoke-narration" / "scripts" / "pack_standalone.py"),
+            str(mp3),
+            str(timing),
+            "--artifact",
+            "-o",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    html = out.read_text(encoding="utf-8")
+    before_script = html.split("<script>", 1)[0]
+    assert '<div id="transcript"><div class="blk p"><div>Hello chat response.' in html
+    assert text in before_script
+    assert "__STATIC_TRANSCRIPT_FALLBACK__" not in html
 
 
 def test_codex_skill_states_surface_boundary():

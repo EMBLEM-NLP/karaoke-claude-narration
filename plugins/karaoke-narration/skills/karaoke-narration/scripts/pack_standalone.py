@@ -14,17 +14,62 @@ loading step entirely, which is what an in-chat review artifact actually needs.
 Usage:
   python3 scripts/pack_standalone.py out/narration.mp3 out/narration.timing.json -o out/narration_standalone.html
 """
-import argparse, base64, json, os, re, sys
+import argparse, base64, html, json, os, re, sys
 
 TEMPLATE_MARKER_AUDIO = "__AUDIO_BASE64_DATA_URI__"
 TEMPLATE_MARKER_TIMING = "__TIMING_JSON_INLINE__"
 TEMPLATE_MARKER_LABEL = "__SOURCE_LABEL__"
+TEMPLATE_MARKER_TRANSCRIPT = "__STATIC_TRANSCRIPT_FALLBACK__"
 
 def html_escape(s):
     """Escape a user-supplied title. It lands inside <title>, and an unescaped
     '<' there would truncate the element and swallow the rest of the head."""
     return (s.replace("&", "&amp;").replace("<", "&lt;")
              .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _block_text(block):
+    text = block.get("text")
+    if text:
+        return text
+    sentences = block.get("sentences") or []
+    return " ".join(s.get("text", "") for s in sentences).strip()
+
+
+def static_transcript_html(timing):
+    """Render a no-JS transcript so file previews are never empty players."""
+    blocks = timing.get("blocks") or []
+    if not blocks:
+        text = timing.get("source_text") or " ".join(
+            str(w.get("w", "")) for w in timing.get("words", [])
+        )
+        return f'<div class="blk p"><div>{html.escape(text)}</div></div>'
+
+    out = []
+    for block in blocks:
+        text = _block_text(block)
+        if not text:
+            continue
+        escaped = html.escape(text)
+        kind = block.get("type")
+        if kind == "heading":
+            level = min(max(int(block.get("level") or 1), 1), 3)
+            out.append(f'<div class="blk h{level}">{escaped}</div>')
+        elif kind == "bullet":
+            out.append(
+                '<div class="blk bullet">'
+                '<span class="marker">&bull;</span>'
+                f"<div>{escaped}</div>"
+                "</div>"
+            )
+        elif kind == "code":
+            out.append(f'<div class="blk code">{escaped}</div>')
+        else:
+            out.append(f'<div class="blk p"><div>{escaped}</div></div>')
+
+    if out:
+        return "\n".join(out)
+    return '<div class="blk p"><div></div></div>'
 
 
 def to_artifact_fragment(html):
@@ -97,6 +142,7 @@ def main():
     html = html.replace(TEMPLATE_MARKER_AUDIO, data_uri)
     html = html.replace(TEMPLATE_MARKER_TIMING, json.dumps(timing))
     html = html.replace(TEMPLATE_MARKER_LABEL, label)
+    html = html.replace(TEMPLATE_MARKER_TRANSCRIPT, static_transcript_html(timing))
 
     if args.title:
         html = re.sub(r"<title>.*?</title>",
