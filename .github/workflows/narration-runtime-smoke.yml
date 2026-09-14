@@ -140,6 +140,7 @@ jobs:
           artifact_html = (turn / "response_artifact.html").read_text(encoding="utf-8")
           artifact_static = artifact_html.split("<script>", 1)[0]
           assert "AudioContext" in artifact_html
+          assert '<audio id="fallbackAudio" controls preload="metadata" src="data:audio/mpeg;base64,' in artifact_html
           assert '<div id="transcript"><div class="blk p"><div>Stop hook smoke test.' in artifact_html
           assert "Stop hook smoke test." in artifact_static
           assert '<div id="transcript"></div>' not in artifact_html
@@ -176,6 +177,7 @@ jobs:
           assert "http://" not in player["html"]
           assert "https://" not in player["html"]
           assert "AudioContext" in player["html"]
+          assert '<audio id="fallbackAudio" controls preload="metadata" src="data:audio/mpeg;base64,' in player["html"]
           assert "This is a short end to end narration smoke test" in player["html"]
           static_html = player["html"].split("<script>", 1)[0]
           assert '<div id="transcript"><div class="blk p"><div>This is a short end to end narration smoke test' in player["html"]
