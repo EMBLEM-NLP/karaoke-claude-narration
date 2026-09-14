@@ -18,8 +18,8 @@ Never say a response was narrated unless a narration tool or trusted hook actual
 ## Tool Order
 
 1. Call `preflight` before the first narration in a session or when a narration fails.
-2. If the user supplied text, call `narrate_text` with that exact text.
-3. If the user wants the current assistant reply narrated, compose the reply as the source text first, call `narrate_text`, and send the same prose to the user with the player result.
+2. If the user wants a chat response read aloud, call `narrate_chat_response` with the exact response text and present the returned packed player HTML. This is the primary ChatGPT Work path.
+3. Use `narrate_text` only for lower-level lifecycle flows where the caller intentionally wants a `narration_id` before fetching a player.
 4. Use `get_status` for a pending or referenced narration.
 5. Use `get_player` only after `get_status` reports `state: ready`.
 6. Use `verify_against_ground_truth` when the user asks whether a narrated output exactly matches what was said.
@@ -28,6 +28,7 @@ Never say a response was narrated unless a narration tool or trusted hook actual
 ## Surface Behavior
 
 - ChatGPT Work, web, and mobile: use explicit MCP tools. Present the returned player or narration ID after success.
+- Never open or share `player_embed_template.html` as a player. It is a reusable template and will show placeholders such as `__STATIC_TRANSCRIPT_FALLBACK__` until `pack_standalone.py` injects a specific chat response.
 - Codex CLI and trusted Codex runtime: use the plugin's `Stop` hook for automatic narration when enabled and trusted.
 - Unsupported or untrusted hook runtime: fall back to explicit narration tools.
 

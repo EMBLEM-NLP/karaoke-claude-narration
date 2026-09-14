@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from secrets import token_urlsafe
@@ -89,11 +90,13 @@ def _read_status(narration_id: str) -> dict[str, Any]:
 
 
 def _check_module(module: str) -> bool:
-    return subprocess.run(
-        [sys.executable, "-c", f"import {module}"],
-        capture_output=True,
-        text=True,
-    ).returncode == 0
+    with tempfile.TemporaryDirectory(prefix="karaoke-preflight-") as cwd:
+        return subprocess.run(
+            [sys.executable, "-c", f"import {module}"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        ).returncode == 0
 
 
 def preflight() -> dict[str, Any]:
@@ -149,6 +152,14 @@ def narrate_text(
             "error": "text_too_large",
             "max_chars": MAX_TEXT_CHARS,
             "actual_chars": len(text),
+        }
+
+    readiness = preflight()
+    if not readiness["ok"]:
+        return {
+            "ok": False,
+            "error": "preflight_failed",
+            "preflight": readiness,
         }
 
     narration_id = token_urlsafe(18)
@@ -290,6 +301,31 @@ def get_player(narration_id: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def narrate_chat_response(
+    text: str,
+    title: str = "Chat response",
+    model: str | None = None,
+    model_id: str | None = None,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    """Narrate one chat response and return its packed player HTML directly."""
+    status = narrate_text(
+        text,
+        title=title,
+        label="Chat response",
+        model=model,
+        model_id=model_id,
+        mode=mode,
+    )
+    if not status.get("ok"):
+        return status
+
+    player = get_player(status["narration_id"])
+    if not player.get("ok"):
+        return {**status, **player}
+    return {**status, **player}
+
+
 def verify_against_ground_truth(narration_id: str, ground_truth: str) -> dict[str, Any]:
     """Compare stored source text with supplied ground truth."""
     try:
@@ -316,6 +352,7 @@ def delete_narration(narration_id: str) -> dict[str, Any]:
 
 def register_tools(mcp: Any) -> None:
     mcp.tool()(preflight)
+    mcp.tool()(narrate_chat_response)
     mcp.tool()(narrate_text)
     mcp.tool()(get_status)
     mcp.tool()(get_player)

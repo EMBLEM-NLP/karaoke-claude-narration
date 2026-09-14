@@ -1,0 +1,194 @@
+name: Narration Runtime Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/narration-runtime-smoke.yml"
+      - "plugins/karaoke-narration/mcp/openai_server.py"
+      - "plugins/karaoke-narration/requirements.txt"
+      - "plugins/karaoke-narration/skills/karaoke-narration/scripts/**"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Generate narration bundle and packed player
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: plugins/karaoke-narration
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system audio tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ffmpeg
+
+      - name: Install Python runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "mcp[cli]==1.29.0"
+
+      - name: Assert preflight passes
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path("mcp/openai_server.py")
+          spec = importlib.util.spec_from_file_location("openai_server_smoke", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          result = module.preflight()
+          assert result["ok"], result
+          print(result)
+          PY
+
+
+      - name: Verify Stop-hook entrypoint lifecycle
+        env:
+          KARAOKE_STATE_DIR: ${{ runner.temp }}/karaoke-hook-state
+          KARAOKE_ALWAYS: "1"
+          KARAOKE_MIN_CHARS: "120"
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          entry = Path("scripts/stop_hook_entry.py")
+          state = Path(os.environ["KARAOKE_STATE_DIR"])
+          env = os.environ.copy()
+
+          def invoke(payload):
+              proc = subprocess.run(
+                  [sys.executable, str(entry)],
+                  input=json.dumps(payload),
+                  capture_output=True,
+                  text=True,
+                  timeout=900,
+                  env=env,
+              )
+              assert proc.returncode == 0, {
+                  "returncode": proc.returncode,
+                  "stdout": proc.stdout,
+                  "stderr": proc.stderr[-1000:],
+              }
+              assert json.loads(proc.stdout) == {
+                  "continue": True,
+                  "suppressOutput": True,
+              }, proc.stdout
+
+          short_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": False,
+              "last_assistant_message": "ok",
+          }
+          invoke(short_payload)
+          assert not (state / "turns").exists(), "short skipped response should not create turns"
+
+          reentrant_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": True,
+              "last_assistant_message": (
+                  "This text is long enough to narrate, but the reentrancy flag means "
+                  "the hook must return immediately and avoid creating a continuation loop."
+              ),
+          }
+          invoke(reentrant_payload)
+          assert not (state / "turns").exists(), "reentrant payload should not create turns"
+
+          narratable_payload = {
+              "session_id": "hooksmoke",
+              "stop_hook_active": False,
+              "last_assistant_message": (
+                  "Stop hook smoke test. This response is deliberately long enough to pass "
+                  "the narration threshold. It verifies that the Codex JSON wrapper stays "
+                  "non blocking while the hook creates audio, timing, standalone HTML, and "
+                  "artifact HTML for a real assistant turn."
+              ),
+          }
+          invoke(narratable_payload)
+
+          turns = sorted((state / "turns").glob("hooksmoke-*"))
+          assert len(turns) == 1, [str(p) for p in turns]
+          turn = turns[0]
+          expected = [
+              turn / "turn.md",
+              turn / "response.mp3",
+              turn / "response.timing.json",
+              turn / "response_standalone.html",
+              turn / "response_artifact.html",
+          ]
+          missing = [str(path) for path in expected if not path.exists()]
+          assert not missing, missing
+          assert (turn / "response.mp3").stat().st_size > 44
+          artifact_html = (turn / "response_artifact.html").read_text(encoding="utf-8")
+          artifact_static = artifact_html.split("<script>", 1)[0]
+          assert "AudioContext" in artifact_html
+          assert "fallbackAudio" not in artifact_html
+          assert "data:audio/mpeg" not in artifact_html
+          assert '<div id="transcript"><div class="blk p"><div>Stop hook smoke test.' in artifact_html
+          assert "Stop hook smoke test." in artifact_static
+          assert '<div id="transcript"></div>' not in artifact_html
+
+          print({
+              "turn": turn.name,
+              "mp3_bytes": (turn / "response.mp3").stat().st_size,
+              "artifact_html_chars": len(artifact_html),
+          })
+          PY
+
+      - name: Generate narration and verify packed player delivery
+        env:
+          KARAOKE_PLUGIN_DATA: ${{ runner.temp }}/karaoke-narration
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path("mcp/openai_server.py")
+          spec = importlib.util.spec_from_file_location("openai_server_smoke", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          player = module.narrate_chat_response(
+              "This is a short end to end narration smoke test for Codex and ChatGPT player delivery.",
+              title="Runtime smoke test",
+          )
+          assert player["ok"], player
+          assert player["player_available"], player
+          assert player["content_type"] == "text/html"
+          assert "/tmp/" not in player["html"]
+          assert "file://" not in player["html"]
+          assert "http://" not in player["html"]
+          assert "https://" not in player["html"]
+          assert "AudioContext" in player["html"]
+          assert "fallbackAudio" not in player["html"]
+          assert "data:audio/mpeg" not in player["html"]
+          assert "This is a short end to end narration smoke test" in player["html"]
+          static_html = player["html"].split("<script>", 1)[0]
+          assert '<div id="transcript"><div class="blk p"><div>This is a short end to end narration smoke test' in player["html"]
+          assert "This is a short end to end narration smoke test" in static_html
+          assert '<div id="transcript"></div>' not in player["html"]
+          print({
+              "narration_id": player["narration_id"],
+              "duration_s": player.get("duration_s"),
+              "word_count": player.get("word_count"),
+              "html_chars": len(player["html"]),
+          })
+          PY
