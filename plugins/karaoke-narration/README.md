@@ -192,6 +192,10 @@ hand.
 - `interop/` — conformance kit: a `timing.json` schema, a validator with a negative control,
   and a reader-portability checker.
 - `commands/karaoke.md` — the `/karaoke on|off|status` toggle.
+- [examples/narrate-external-doc.md](examples/narrate-external-doc.md) — narrating a
+  generated doc that lives outside this repo (e.g. another project's tool inventory) as
+  one or more `narrate_response.sh` turns, including how to split it under the ~800-word
+  per-turn ceiling.
 
 - [SECURITY.md](SECURITY.md) — threat model for both components
 - [CHANGELOG.md](CHANGELOG.md)
