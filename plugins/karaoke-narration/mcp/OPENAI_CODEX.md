@@ -7,7 +7,9 @@ It differs from the original Claude-oriented `server.py` in four ways:
 - It returns structured objects instead of JSON strings.
 - It returns opaque `narration_id` values instead of server-local `/tmp` paths.
 - It stores output below `PLUGIN_DATA` or `KARAOKE_PLUGIN_DATA`.
-- It exposes small lifecycle tools: `preflight`, `narrate_text`, `get_status`, `get_player`, `verify_against_ground_truth`, and `delete_narration`.
+- It exposes a one-call chat response tool, `narrate_chat_response`, plus lower-level lifecycle tools: `preflight`, `narrate_text`, `get_status`, `get_player`, `verify_against_ground_truth`, and `delete_narration`.
+
+For ChatGPT Work delivery, prefer `narrate_chat_response`: it narrates the exact response text and returns the packed player HTML directly. Do not return `player_embed_template.html`; that file is only a template and will show placeholders until packed for a specific response.
 
 ## Local Codex Transport
 
