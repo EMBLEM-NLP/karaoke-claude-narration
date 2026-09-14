@@ -1,6 +1,6 @@
 {
   "name": "karaoke-narration",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "description": "Word-highlighted, tap-to-seek narration review for ChatGPT and Codex, with explicit narration tools and optional trusted Codex hooks.",
   "author": {
     "name": "emblem-nlp",

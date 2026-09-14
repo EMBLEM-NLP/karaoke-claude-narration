@@ -5,3 +5,4 @@ piper-tts
 faster-whisper
 numpy
 tiktoken
+socksio
