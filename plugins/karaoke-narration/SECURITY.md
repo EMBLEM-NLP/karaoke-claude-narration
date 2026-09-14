@@ -18,8 +18,13 @@ installing.
 **Fires on every turn** (Claude Code only — `Stop` has no matcher). It is inert by default:
 
 - **Opt-in.** No-ops unless `~/.karaoke-narration/enabled` exists, set via `/karaoke on`.
-- **Content-filtered.** Skips replies under `KARAOKE_MIN_CHARS` (default 220) and replies that
-  are mostly fenced code.
+- **Every non-empty turn by default.** Once enabled, the hook narrates any non-empty
+  `last_assistant_message`. Set `KARAOKE_EVERY_TURN=0` to restore the older
+  `KARAOKE_MIN_CHARS`/mostly-code filter.
+- **Exact source required by default.** If the runtime does not provide
+  `last_assistant_message`, the hook skips instead of guessing from transcript files.
+  `KARAOKE_ALLOW_TRANSCRIPT_FALLBACK=1` re-enables the older recovery path for runtimes
+  where that stale-session risk is acceptable.
 - **Local only, once enabled.** Runs Piper (TTS) and faster-whisper (ASR) as local
   subprocesses. No network call is made per narration.
 - **One exception, on first use of a given voice:** `ensure_voice()` downloads that Piper

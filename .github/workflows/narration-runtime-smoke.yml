@@ -62,6 +62,7 @@ jobs:
           KARAOKE_STATE_DIR: ${{ runner.temp }}/karaoke-hook-state
           KARAOKE_ALWAYS: "1"
           KARAOKE_MIN_CHARS: "120"
+          KARAOKE_EVERY_TURN: "0"
         run: |
           python - <<'PY'
           import json
@@ -129,6 +130,7 @@ jobs:
           turn = turns[0]
           expected = [
               turn / "turn.md",
+              turn / "source_manifest.json",
               turn / "response.mp3",
               turn / "response.timing.json",
               turn / "response_standalone.html",
@@ -138,7 +140,12 @@ jobs:
           assert not missing, missing
           assert (turn / "response.mp3").stat().st_size > 44
           artifact_html = (turn / "response_artifact.html").read_text(encoding="utf-8")
+          manifest = json.loads((turn / "source_manifest.json").read_text(encoding="utf-8"))
           artifact_static = artifact_html.split("<script>", 1)[0]
+          assert manifest["status"] == "ready"
+          assert manifest["source"] == "last_assistant_message"
+          assert manifest["chars"] == len(narratable_payload["last_assistant_message"])
+          assert manifest["sha256"]
           assert "AudioContext" in artifact_html
           assert "fallbackAudio" not in artifact_html
           assert "data:audio/mpeg" not in artifact_html

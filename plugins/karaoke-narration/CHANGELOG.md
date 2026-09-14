@@ -3,6 +3,21 @@
 All notable changes to this standalone package are documented here.
 Format follows Keep a Changelog; versioning follows SemVer 2.0.0.
 
+## [2.5.1] - 2026-09-14 — require exact hook text, narrate every non-empty turn
+
+### Changed
+- `scripts/stop_hook.py` now treats every non-empty `last_assistant_message` as narratable
+  once the hook is enabled. The old short-reply/mostly-code filter remains available with
+  `KARAOKE_EVERY_TURN=0`.
+- Transcript recovery is no longer automatic. The hook skips when `last_assistant_message`
+  is missing unless `KARAOKE_ALLOW_TRANSCRIPT_FALLBACK=1` is set, because scanning the newest
+  transcript can select stale text from another session.
+- Stop-hook builds now pass `--verify-against turn.md` and write `source_manifest.json`
+  beside each turn with source type, character count, SHA-256, build status, and produced
+  file names.
+- Packing failures for standalone or Artifact HTML are now checked and logged instead of
+  being reported as a successful narration.
+
 ## [2.5.0] - 2026-09-12 — wire up delivery, split the MCP connector out, trim SKILL.md
 
 Prompted by a repo-structure review: `pending_narration.sh` existed, fully written and

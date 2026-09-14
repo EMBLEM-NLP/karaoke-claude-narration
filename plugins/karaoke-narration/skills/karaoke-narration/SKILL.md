@@ -4,7 +4,7 @@ description: Builds a word-highlighted, tap-to-seek "karaoke" review player for 
 compatibility: Requires piper (piper-tts), faster-whisper, ffmpeg/ffprobe, python3 with numpy. Install with `pip install --break-system-packages piper-tts faster-whisper numpy`. The player.html is a static file — usable anywhere, including Claude Desktop.
 allowed-tools: Bash(piper:*) Bash(ffmpeg:*) Bash(ffprobe:*) Bash(python3:*) Read Write
 metadata:
-  version: 2.5.0
+  version: 2.5.1
   author: emblem-nlp
   plugin: karaoke-narration
 ---
@@ -106,15 +106,23 @@ text, exposed as `last_assistant_message`.
 ### Design constraints in stop_hook.py
 
 - **Opt-in.** Inert until `~/.karaoke-narration/enabled` exists (`/karaoke on`).
-  `Stop` has no matcher and fires on every turn including one-word replies;
-  synthesizing speech for all of them is slow and wasteful.
-- **Content filtered.** Skips replies under `KARAOKE_MIN_CHARS` (default 220) and
-  those that are mostly fenced code.
+  `Stop` has no matcher and fires on every turn including one-word replies, so
+  the enable flag is the boundary where the user accepts that local TTS cost.
+- **Every non-empty turn by default.** Once enabled, the hook treats any non-empty
+  `last_assistant_message` as eligible. Set `KARAOKE_EVERY_TURN=0` to restore the
+  older `KARAOKE_MIN_CHARS`/mostly-code filter for installations that prefer to
+  skip short replies.
 - **Never blocks.** Always exits 0, never emits `decision: "block"`, so it cannot
   cause the Stop -> block -> Stop loop. Failures degrade to a log line.
 - **Async.** Declared `"async": true` so TTS latency never stalls the agent loop.
-- **Transcript fallback ignores `transcript_path`.** That field is documented as
-  lagging and has been reported stale; the fallback picks the newest `.jsonl`.
+- **Exact source required.** By default the hook requires `last_assistant_message`
+  and skips if the runtime does not provide it, because transcript recovery can
+  pick a stale or different session. Set `KARAOKE_ALLOW_TRANSCRIPT_FALLBACK=1`
+  only for older runtimes where that risk is understood.
+- **Auditable capture.** Each turn writes `source_manifest.json` with the source,
+  character count, SHA-256 of the captured response, and build status. The build
+  also runs with `--verify-against turn.md`, so the packed player is checked
+  against the exact captured payload text.
 
 If the plugin hook does not fire, run `bash install.sh --apply` from the package
 root for the settings-based route - plugin `Stop` hooks specifically have been
@@ -189,8 +197,8 @@ python3 scripts/audit_published.py turns/007
 ```
 
 Exit 0 published-matches-said, 1 a real divergence with the differing spans printed, 2 could
-not check (no Stop-hook record - hook off, or the reply was under `KARAOKE_MIN_CHARS`). Exit
-2 is not a pass. It reuses `build_karaoke.py`'s own comparison rather than restating it, so a
+not check (no Stop-hook record, hook off, or the hook skipped because the runtime did not
+provide `last_assistant_message`). Exit 2 is not a pass. It reuses `build_karaoke.py`'s own comparison rather than restating it, so a
 fenced code block does not false-fail the way a raw diff would.
 
 Writing constraints the parser imposes, all verified against it:
@@ -203,9 +211,9 @@ Writing constraints the parser imposes, all verified against it:
   Split longer material across turns rather than summarising it; summarising is the defect
   rule 1 exists to prevent.
 
-Note that `stop_hook.py` never had this problem: it narrates `last_assistant_message`, which
-is the actual reply, so it is verbatim by construction. Rule 1 is about using the tool by
-hand — which is the only mode available where the hook cannot be registered.
+Note that `stop_hook.py` now requires `last_assistant_message` by default and records a
+source hash beside each turn. Rule 1 is about using the tool by hand — which is the only
+mode available where the hook cannot be registered.
 
 ## Delivery and iOS
 

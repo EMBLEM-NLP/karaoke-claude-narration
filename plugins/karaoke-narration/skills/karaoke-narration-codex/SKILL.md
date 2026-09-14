@@ -2,7 +2,7 @@
 name: karaoke-narration-codex
 description: Use in ChatGPT Work or Codex when the user asks to narrate a response, produce a word-highlighted karaoke player, audit whether a narrated response matches the source text, or enable supported Codex Stop-hook narration. Use explicit MCP tools on ChatGPT web/mobile surfaces; use trusted hooks only where the Codex runtime supports them.
 metadata:
-  version: 2.4.1
+  version: 2.5.1
   author: emblem-nlp
   plugin: karaoke-narration
 ---
@@ -48,4 +48,4 @@ Never say a response was narrated unless a narration tool or trusted hook actual
 
 ## Hook Notes
 
-The Codex `Stop` event carries `last_assistant_message`, which is the preferred source for automatic narration. The hook is opt-in and must be reviewed/trusted by the runtime before it runs. It should never block a turn; narration is a side effect, not a reason to continue or redirect the agent loop.
+The Codex `Stop` event carries `last_assistant_message`, which is the required default source for automatic narration. The hook is opt-in and must be reviewed/trusted by the runtime before it runs. It should never block a turn; narration is a side effect, not a reason to continue or redirect the agent loop. Do not use transcript recovery for verbatim ChatGPT/Codex delivery unless the runtime cannot provide `last_assistant_message` and the stale-session risk has been accepted explicitly.

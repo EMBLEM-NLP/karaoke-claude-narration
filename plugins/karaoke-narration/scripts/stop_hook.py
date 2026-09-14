@@ -28,6 +28,7 @@ so it cannot trigger the Stop -> block -> Stop loop that the block cap exists to
 contain. Failures degrade to a log line, never to a stalled agent.
 """
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -49,10 +50,13 @@ ENABLE_FLAG = STATE_DIR / "enabled"
 LOG = STATE_DIR / "hook.log"
 MODEL_FILE = STATE_DIR / "model"
 
-# Opt-in by default. Synthesizing TTS on every turn is slow and wasteful on
-# one-line acknowledgements, so narration stays off until explicitly enabled
-# via `/karaoke on`. Set KARAOKE_ALWAYS=1 to bypass.
+# Opt-in by default. Once enabled, narrate every non-empty assistant response:
+# the product promise is "the chat response for each turn", not "long enough
+# replies only". Set KARAOKE_EVERY_TURN=0 to restore the older length/code
+# filter for installations that want to reduce local TTS work.
 MIN_CHARS = int(os.environ.get("KARAOKE_MIN_CHARS", "220"))
+EVERY_TURN = os.environ.get("KARAOKE_EVERY_TURN", "1") != "0"
+ALLOW_TRANSCRIPT_FALLBACK = os.environ.get("KARAOKE_ALLOW_TRANSCRIPT_FALLBACK") == "1"
 
 
 def log(msg):
@@ -67,9 +71,8 @@ def log(msg):
 def recover_from_transcript(payload):
     """Fallback when last_assistant_message is absent (older Claude Code).
 
-    Deliberately ignores the payload's transcript_path: it is documented as
-    lagging, and has been reported pointing at a stale file. The newest .jsonl
-    under the projects dir is the more reliable choice."""
+    This is opt-in only. The newest .jsonl under the projects dir may belong to
+    another session, so it is not safe for the default verbatim-turn contract."""
     try:
         candidates = list((Path.home() / ".claude" / "projects").rglob("*.jsonl"))
         if not candidates:
@@ -99,8 +102,14 @@ def worth_narrating(text):
     """Skip what would be tedious or meaningless to listen to.
 
     Stop has no matcher, so it fires on every turn including one-word
-    acknowledgements. Content filtering has to happen here or not at all."""
+    acknowledgements. In the default every-turn mode, only empty messages are
+    skipped; the legacy length/code filter is available with
+    KARAOKE_EVERY_TURN=0."""
     stripped = text.strip()
+    if not stripped:
+        return False, "empty"
+    if EVERY_TURN:
+        return True, ""
     if len(stripped) < MIN_CHARS:
         return False, f"below {MIN_CHARS} chars"
     # Strip fenced code before measuring prose - a reply that is almost entirely
@@ -109,6 +118,29 @@ def worth_narrating(text):
     if len(prose) < MIN_CHARS // 2:
         return False, "mostly code"
     return True, ""
+
+
+def write_manifest(out_dir, payload, text, source, status, error=None, files=None):
+    manifest = {
+        "schema_version": "1.0",
+        "status": status,
+        "session_id": payload.get("session_id") or "",
+        "source": source,
+        "chars": len(text),
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "created_at": int(time.time()),
+    }
+    if error:
+        manifest["error"] = error
+    if files:
+        manifest["files"] = files
+    try:
+        (out_dir / "source_manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    except Exception as e:
+        log(f"could not write source manifest for {out_dir.name}: {e}")
 
 
 def main():
@@ -129,6 +161,9 @@ def main():
     text = payload.get("last_assistant_message") or ""
     source = "last_assistant_message"
     if not text.strip():
+        if not ALLOW_TRANSCRIPT_FALLBACK:
+            log("no last_assistant_message found; skipped to avoid narrating stale text")
+            return 0
         text = recover_from_transcript(payload)
         source = "transcript fallback"
     if not text.strip():
@@ -145,9 +180,15 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     turn_md = out_dir / "turn.md"
     turn_md.write_text(text, encoding="utf-8")
+    write_manifest(out_dir, payload, text, source, "captured")
 
     mp3 = out_dir / "response.mp3"
-    cmd = [sys.executable, str(BUILD), str(turn_md), "-o", str(mp3), "--labels", "Chat response"]
+    cmd = [
+        sys.executable, str(BUILD), str(turn_md),
+        "-o", str(mp3),
+        "--labels", "Chat response",
+        "--verify-against", str(turn_md),
+    ]
     # Model attribution. The Stop payload carries session_id, transcript_path
     # and last_assistant_message - never model identity - so this hook cannot
     # read the running model directly. It used to depend solely on KARAOKE_MODEL
@@ -179,31 +220,56 @@ def main():
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=540)
         if r.returncode == 2:
+            write_manifest(out_dir, payload, text, source, "qc_failed")
             log(f"QC gate failed for {out_dir.name}; audio not shipped")
             return 0
         if r.returncode != 0:
-            log(f"build failed rc={r.returncode}: {r.stderr.strip()[:300]}")
+            err = r.stderr.strip()[:300]
+            write_manifest(out_dir, payload, text, source, "build_failed", err)
+            log(f"build failed rc={r.returncode}: {err}")
             return 0
         timing = mp3.with_suffix("").with_suffix(".timing.json")
         timing = out_dir / "response.timing.json"
-        subprocess.run(
+        standalone = subprocess.run(
             [sys.executable, str(PACK), str(mp3), str(timing),
              "-o", str(out_dir / "response_standalone.html")],
             capture_output=True, text=True, timeout=120,
         )
+        if standalone.returncode != 0:
+            err = standalone.stderr.strip()[:300]
+            write_manifest(out_dir, payload, text, source, "pack_failed", err)
+            log(f"standalone pack failed rc={standalone.returncode}: {err}")
+            return 0
         # Also the Artifact fragment. A remote session (claude.ai, Cowork) can
         # only deliver the player as an Artifact: a file attachment renders in a
         # static preview that never executes its script, so the reader sees an
         # empty shell showing the markup's boot text and nothing else.
-        subprocess.run(
+        artifact = subprocess.run(
             [sys.executable, str(PACK), str(mp3), str(timing), "--artifact",
              "-o", str(out_dir / "response_artifact.html")],
             capture_output=True, text=True, timeout=120,
         )
+        if artifact.returncode != 0:
+            err = artifact.stderr.strip()[:300]
+            write_manifest(out_dir, payload, text, source, "pack_failed", err)
+            log(f"artifact pack failed rc={artifact.returncode}: {err}")
+            return 0
+        write_manifest(
+            out_dir, payload, text, source, "ready",
+            files=[
+                "turn.md",
+                "response.mp3",
+                "response.timing.json",
+                "response_standalone.html",
+                "response_artifact.html",
+            ],
+        )
         log(f"narrated {out_dir.name} via {source} ({len(text)} chars)")
     except subprocess.TimeoutExpired:
+        write_manifest(out_dir, payload, text, source, "timeout")
         log(f"build timed out for {out_dir.name}")
     except Exception as e:
+        write_manifest(out_dir, payload, text, source, "failed", str(e)[:300])
         log(f"unexpected failure: {e}")
     return 0
 
