@@ -125,12 +125,11 @@ def main():
                          "gallery. Pass something specific to the turn.")
     args = ap.parse_args()
 
-    # Raw base64, NOT a data: URI. The player decodes these bytes with the Web
-    # Audio API rather than assigning a URL to an <audio> element, because the
-    # artifact sandbox's CSP media-src blocks both data: and blob: media sources.
+    # A data: URI lets static/no-JS previews fall back to the browser's native
+    # audio controls. The Web Audio player strips the prefix before decoding.
     with open(args.mp3, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
-    data_uri = b64
+    data_uri = "data:audio/mpeg;base64," + b64
 
     with open(args.timing, encoding="utf-8") as f:
         timing = json.load(f)  # validate it parses before embedding
