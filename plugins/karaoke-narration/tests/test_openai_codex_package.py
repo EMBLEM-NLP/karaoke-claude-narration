@@ -44,6 +44,39 @@ def test_openai_adapter_imports_without_mcp_dependency():
     assert not module.compare_texts("alpha beta", "alpha gamma")["matches"]
 
 
+
+def test_check_module_ignores_shadowing_from_current_directory(tmp_path, monkeypatch):
+    path = ROOT / "mcp" / "openai_server.py"
+    spec = importlib.util.spec_from_file_location("openai_server_shadowed", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    (tmp_path / "json.py").write_text("raise RuntimeError('shadowed import')\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert module._check_module("json") is True
+
+
+def test_narrate_text_fails_before_writing_when_preflight_fails(tmp_path, monkeypatch):
+    path = ROOT / "mcp" / "openai_server.py"
+    spec = importlib.util.spec_from_file_location("openai_server_preflight", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    missing = {"ok": False, "missing": ["piper_binary"], "checks": {}, "fix": None}
+    monkeypatch.setattr(module, "DATA", tmp_path)
+    monkeypatch.setattr(module, "preflight", lambda: missing)
+
+    result = module.narrate_text("hello world")
+
+    assert result == {
+        "ok": False,
+        "error": "preflight_failed",
+        "preflight": missing,
+    }
+    assert not (tmp_path / "narrations").exists()
+
+
 def test_codex_skill_states_surface_boundary():
     skill = (ROOT / "skills" / "karaoke-narration-codex" / "SKILL.md").read_text(
         encoding="utf-8"
