@@ -164,15 +164,12 @@ jobs:
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
 
-          result = module.narrate_text(
+          player = module.narrate_chat_response(
               "This is a short end to end narration smoke test for Codex and ChatGPT player delivery.",
               title="Runtime smoke test",
           )
-          assert result["ok"], result
-          assert result["player_available"], result
-
-          player = module.get_player(result["narration_id"])
           assert player["ok"], player
+          assert player["player_available"], player
           assert player["content_type"] == "text/html"
           assert "/tmp/" not in player["html"]
           assert "file://" not in player["html"]
@@ -185,9 +182,9 @@ jobs:
           assert "This is a short end to end narration smoke test" in static_html
           assert '<div id="transcript"></div>' not in player["html"]
           print({
-              "narration_id": result["narration_id"],
-              "duration_s": result.get("duration_s"),
-              "word_count": result.get("word_count"),
+              "narration_id": player["narration_id"],
+              "duration_s": player.get("duration_s"),
+              "word_count": player.get("word_count"),
               "html_chars": len(player["html"]),
           })
           PY
