@@ -35,9 +35,15 @@ jobs:
       - name: Assert preflight passes
         run: |
           python - <<'PY'
-          from mcp.openai_server import preflight
+          import importlib.util
+          from pathlib import Path
 
-          result = preflight()
+          path = Path("mcp/openai_server.py")
+          spec = importlib.util.spec_from_file_location("openai_server_smoke", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          result = module.preflight()
           assert result["ok"], result
           print(result)
           PY
@@ -47,16 +53,22 @@ jobs:
           KARAOKE_PLUGIN_DATA: ${{ runner.temp }}/karaoke-narration
         run: |
           python - <<'PY'
-          from mcp.openai_server import get_player, narrate_text
+          import importlib.util
+          from pathlib import Path
 
-          result = narrate_text(
+          path = Path("mcp/openai_server.py")
+          spec = importlib.util.spec_from_file_location("openai_server_smoke", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          result = module.narrate_text(
               "This is a short end to end narration smoke test for Codex and ChatGPT player delivery.",
               title="Runtime smoke test",
           )
           assert result["ok"], result
           assert result["player_available"], result
 
-          player = get_player(result["narration_id"])
+          player = module.get_player(result["narration_id"])
           assert player["ok"], player
           assert player["content_type"] == "text/html"
           assert "/tmp/" not in player["html"]
