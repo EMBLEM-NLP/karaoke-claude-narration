@@ -137,12 +137,17 @@ jobs:
           missing = [str(path) for path in expected if not path.exists()]
           assert not missing, missing
           assert (turn / "response.mp3").stat().st_size > 44
-          assert "AudioContext" in (turn / "response_artifact.html").read_text(encoding="utf-8")
+          artifact_html = (turn / "response_artifact.html").read_text(encoding="utf-8")
+          artifact_static = artifact_html.split("<script>", 1)[0]
+          assert "AudioContext" in artifact_html
+          assert '<div id="transcript"><div class="blk p"><div>Stop hook smoke test.' in artifact_html
+          assert "Stop hook smoke test." in artifact_static
+          assert '<div id="transcript"></div>' not in artifact_html
 
           print({
               "turn": turn.name,
               "mp3_bytes": (turn / "response.mp3").stat().st_size,
-              "artifact_html_chars": len((turn / "response_artifact.html").read_text(encoding="utf-8")),
+              "artifact_html_chars": len(artifact_html),
           })
           PY
 
@@ -175,6 +180,10 @@ jobs:
           assert "https://" not in player["html"]
           assert "AudioContext" in player["html"]
           assert "This is a short end to end narration smoke test" in player["html"]
+          static_html = player["html"].split("<script>", 1)[0]
+          assert '<div id="transcript"><div class="blk p"><div>This is a short end to end narration smoke test' in player["html"]
+          assert "This is a short end to end narration smoke test" in static_html
+          assert '<div id="transcript"></div>' not in player["html"]
           print({
               "narration_id": result["narration_id"],
               "duration_s": result.get("duration_s"),
